@@ -1,3 +1,7 @@
 #Vim files
 .*~
 *.swp
+*.un~
+__pycache__/
+*.pptx
+*.txt
