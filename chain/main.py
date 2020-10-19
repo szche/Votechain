@@ -1,12 +1,8 @@
-from ecdsa import SigningKey, VerifyingKey, SECP256k1
-from ecdsa.keys import BadSignatureError
 import utils
-from copy import deepcopy
-from uuid import uuid4
-
-#Create PKW keys
-pkw_private_key = SigningKey.generate(curve=SECP256k1)
-pkw_public_key = pkw_private_key.get_verifying_key()
+from transfer import Transfer
+from committee import Committee
+from vote import Vote
+from keys import * 
 
 #Some voters
 alice_private_key = SigningKey.generate(curve=SECP256k1)
@@ -23,103 +19,6 @@ def get_owner(public_key):
         utils.serialize(bob_public_key): "Bob",
     }
     return database[utils.serialize(public_key)]
-
-class Committee:
-    def __init__(self, private_key, public_key):
-        self.private_key = private_key
-        self.public_key = public_key
-        self.votes = {}
-
-    # Issue a 'voting ticket' by a Committee to a voter
-    def issue(self, public_key):
-        message = utils.serialize(public_key) 
-        signature = self.private_key.sign(message)
-        transfer = Transfer(signature, public_key)
-        vote = Vote([transfer])
-        # After creating a valid vote, add it to the votes index
-        self.votes[vote.id] = deepcopy(vote)
-        return vote
-
-    # Loop through the votes and check if the public_key of the coin matches the argument
-    def fetch_vote(self, public_key):
-        votes = []
-        for vote in self.votes.values():
-            if vote.transfers[-1].public_key.to_string() == public_key.to_string():
-                votes.append(vote)
-        return votes
-
-    def observe_vote(self, vote):
-        last_observation = self.votes[vote.id]
-        last_observation_length = len(last_observation.transfers)
-        assert last_observation.transfers == vote.transfers[:last_observation_length]
-        vote.validate()
-        self.votes[vote.id] = deepcopy(vote)
-
-    
-
-class Transfer:
-    def __init__(self, signature, public_key):
-        self.signature = signature
-        self.public_key = public_key
-
-    def __eq__(self, other):
-        return self.signature == other.signature and \
-                self.public_key.to_string() == other.public_key.to_string()
-
-class Vote:
-    def __init__(self, transfers):
-        self.transfers = transfers
-        self.id = uuid4()
-        self.validate()
-
-    def __eq__(self, other):
-        return self.id == other.id and \
-                self.transfers == other.transfers
-
-    #Validate that the vote is valid
-    def validate(self):
-        # Get the first transfer and validate it - should be issued by the PKW
-        first_transfer = self.transfers[0]
-        message = utils.serialize(first_transfer.public_key)
-        assert pkw_public_key.verify(first_transfer.signature, message)
-        # Get the rest of transfers (if the voters gives away his vote to someone else)
-        previous_transfer = first_transfer
-        for next_transfer in self.transfers[1::]:
-            message = transfer_message(previous_transfer.signature, next_transfer.public_key) 
-            assert previous_transfer.public_key.verify(next_transfer.signature, message)
-            previous_transfer = next_transfer
-   
-    # Return who is currently owning this vote
-    def owner(self):
-        public_key = self.transfers[-1].public_key
-        return get_owner(public_key)
-
-    # Send this vote to someone else
-    def send(self, owner_private_key, recipient_public_key):
-        assert self.transfers[-1].public_key == owner_private_key.get_verifying_key()
-        message = transfer_message(self.transfers[-1].signature, recipient_public_key)
-        signature = owner_private_key.sign(message)
-        vote_transfer = Transfer(signature, recipient_public_key)
-        self.transfers.append(vote_transfer)
-
-    # Show the history of this vote
-    def list_transfers(self):
-        print("PKW ", end="")
-        for transfer in self.transfers:
-            print("-> {} ".format( get_owner(transfer.public_key) ), end="")
-        print("")
-
-    def __str__(self):
-        return "Vote id: {}\nOwner: {}".format(self.id, self.owner())
-
-
-
-def transfer_message(previous_signature, next_owner_public_key):
-    message = {
-            "previous_signature": previous_signature,
-            "next_owner_public_key": next_owner_public_key
-    }
-    return utils.serialize(message)
 
 
 
