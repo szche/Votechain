@@ -1,12 +1,12 @@
 from uuid import uuid4
 import utils
-from keys import pkw_private_key, pkw_public_key
+from keys import *
 from transfer import Transfer
 
 class Vote:
     def __init__(self, transfers):
         self.transfers = transfers
-        self.id = uuid4()
+        self.id = uuid4() # <- random and unique Vote id, used to check for duplicates
         self.validate()
 
     def __eq__(self, other):
@@ -15,11 +15,11 @@ class Vote:
 
     #Validate that the vote is valid
     def validate(self):
-        # Get the first transfer and validate it - should be issued by the PKW
+        # Get the first transfer and validate it - should be issued by the Committee 
         first_transfer = self.transfers[0]
         message = utils.serialize(first_transfer.public_key)
         assert pkw_public_key.verify(first_transfer.signature, message)
-        # Get the rest of transfers (if the voters gives away his vote to someone else)
+        # Get the rest of transfers (if voter delegates his vote)
         previous_transfer = first_transfer
         for next_transfer in self.transfers[1::]:
             message = transfer_message(previous_transfer.signature, next_transfer.public_key) 
@@ -51,7 +51,8 @@ class Vote:
 
 
 
-
+# Prepare a sending commitment
+# i.e. tick the box on your voting ticket but dont put it in the ballot box yet
 def transfer_message(previous_signature, next_owner_public_key):
     message = {
             "previous_signature": previous_signature,

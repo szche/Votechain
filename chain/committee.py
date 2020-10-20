@@ -19,7 +19,8 @@ class Committee:
         self.votes[vote.id] = deepcopy(vote)
         return vote
 
-    # Loop through the votes and check if the public_key of the coin matches the argument
+    # Loop through the votes and check if the public_key of the coin
+    # matches the argument
     def fetch_vote(self, public_key):
         votes = []
         for vote in self.votes.values():
@@ -27,6 +28,9 @@ class Committee:
                 votes.append(vote)
         return votes
 
+    # Check if this vote is valid and built on top of the existing vote
+    # If that is the case, update the state of the vote
+    # i.e. put the voting ticket in the ballot box
     def observe_vote(self, vote):
         last_observation = self.votes[vote.id]
         last_observation_length = len(last_observation.transfers)
