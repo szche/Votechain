@@ -2,6 +2,7 @@ import utils
 from transfer import Transfer
 from vote import Vote
 from copy import deepcopy
+from keys import *
 
 class Committee:
     def __init__(self, private_key, public_key):
@@ -19,8 +20,8 @@ class Committee:
         self.votes[vote.id] = deepcopy(vote)
         return vote
 
-    # Loop through the votes and check if the public_key of the coin
-    # matches the argument
+    # Return an array of votes
+    # Owner of the public key is the owner of these votes
     def fetch_vote(self, public_key):
         votes = []
         for vote in self.votes.values():
@@ -28,6 +29,24 @@ class Committee:
                 votes.append(vote)
         return votes
 
+    # Returns which public key owns this vote
+    def get_owner(self, vote):
+        return self.votes[vote.id].transfers[-1].public_key
+
+
+    def validate_vote(self, vote):
+        # Check if all the previous transfers are valid
+        issue_transfer = vote.transfers[0]
+        issue_message = utils.serialize(issue_transfer.public_key)
+        assert self.public_key.verify(issue_transfer.signature, issue_message)
+        previous_transfer = issue_transfer
+        for next_transfer in vote.transfers[1::]:
+            message = transfer_message(previous_transfer.signature, next_transfer.public_key)
+            assert previous_transfer.public_key.verify(next_transfer.signature, message)
+            previous_transfer = next_transfer
+        return True
+        
+        
     # Check if this vote is valid and built on top of the existing vote
     # If that is the case, update the state of the vote
     # i.e. put the voting ticket in the ballot box
@@ -35,6 +54,9 @@ class Committee:
         last_observation = self.votes[vote.id]
         last_observation_length = len(last_observation.transfers)
         assert last_observation.transfers == vote.transfers[:last_observation_length]
-        vote.validate()
+        self.validate_vote(vote)
         self.votes[vote.id] = deepcopy(vote)
+
+
+
 
