@@ -1,7 +1,7 @@
 from uuid import uuid4
-import utils
-from keys import *
-from transfer import Transfer
+from . import utils
+from .keys import *
+from .transfer import Transfer
 
 class Vote:
     def __init__(self, transfers):

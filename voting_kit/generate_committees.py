@@ -1,5 +1,5 @@
-import utils
 import sys 
+import utils
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
 
 pubkeys = {}

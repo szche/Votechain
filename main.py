@@ -1,8 +1,8 @@
-import utils
-from transfer import Transfer
-from committee import Committee
-from vote import Vote
-from keys import * 
+import chain.utils 
+from chain.transfer import Transfer
+from chain.committee import Committee
+from chain.vote import Vote
+from chain.keys import * 
 
 # Test scenario 2:
 # Alice gets 2 votes and Bob gets one. Alice sends Bob her vote and he gives it back

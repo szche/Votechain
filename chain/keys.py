@@ -1,7 +1,7 @@
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
 from ecdsa.keys import BadSignatureError
 from ecdsa.util import randrange_from_seed__trytryagain
-import utils
+from . import utils
 import os
 
 # Return shorter version of the key
@@ -21,13 +21,13 @@ def transfer_message(previous_signature, next_owner_public_key):
 
 print("-" * 10)
 # Get the authorized committee public key list
-committee_public_keys = utils.from_disk("committee_pubkeys.votechain")
+committee_public_keys = utils.from_disk("voting_kit/committee_pubkeys.votechain")
 for committee in committee_public_keys:
     print("Committee {} with public key {}".format( committee, short_key(committee_public_keys[committee]) ))
 
 print("-" * 10)
 # Get the political parties public key list
-parties_public_keys = utils.from_disk("parties_pubkeys.votechain")
+parties_public_keys = utils.from_disk("voting_kit/parties_pubkeys.votechain")
 for party in parties_public_keys:
     print("Party {} with public key {}".format( party, short_key(parties_public_keys[party]) ))
 print("-" * 10)

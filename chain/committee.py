@@ -1,8 +1,8 @@
-import utils
-from transfer import Transfer
-from vote import Vote
+from . import utils
+from .transfer import Transfer
+from .vote import Vote
 from copy import deepcopy
-from keys import *
+from .keys import *
 
 class Committee:
     def __init__(self, private_key, public_key):
