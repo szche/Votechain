@@ -63,9 +63,14 @@ def case_voter():
 
     # After generating your keys, establish connection with Committees
     # ask them, what is your coin balance
+
+    # Cast your vote and check if its included
+
+
         
 
 if __name__ == "__main__":
     # Run it when you're the voter
     case_voter()
+
 
