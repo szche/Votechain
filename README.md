@@ -12,3 +12,5 @@ Voting committiees act as trustworthy nodes that handle votes and are reponsible
 ### TODO
  - Add networking
  - Enhance privacy
+ - Add GUI
+
