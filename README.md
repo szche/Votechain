@@ -1,4 +1,5 @@
 ![](votechain_logo.png)
+# Votechain
 Blockchain-based voting system made as a project for Cryptography class.
 
 ### How it works
