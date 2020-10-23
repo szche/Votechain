@@ -25,6 +25,14 @@ committee_public_keys = utils.from_disk("voting_kit/committee_pubkeys.votechain"
 for committee in committee_public_keys:
     print("Committee {} with public key {}".format( committee, short_key(committee_public_keys[committee]) ))
 
+#Get committee private keys - debugging purposes only
+committee_private_keys = utils.from_disk("voting_kit/committee_privkeys.votechain")
+committee = {
+        "name": "Krakow",
+        "privkey": committee_private_keys["Krakow"],
+        "pubkey": committee_public_keys["Krakow"]
+}
+
 print("-" * 10)
 # Get the political parties public key list
 parties_public_keys = utils.from_disk("voting_kit/parties_pubkeys.votechain")
