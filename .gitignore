@@ -5,3 +5,6 @@
 __pycache__/
 *.pptx
 *.txt
+
+#Venv
+venv/
