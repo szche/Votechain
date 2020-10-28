@@ -3,9 +3,8 @@
 *.swp
 *.un~
 __pycache__/
-*.pptx
-*.txt
+
 
 #Venv
 venv/
-airdrop.votechain
+data.txt
