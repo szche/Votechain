@@ -31,8 +31,8 @@ class Committee:
         return votes
 
     # Returns which public key owns this vote
-    def get_owner(self, vote):
-        return self.votes[vote.id].transfers[-1].public_key
+    def get_owner(self, voteID):
+        return self.votes[voteID].transfers[-1].public_key
 
     def validate_vote(self, vote):
         # Check if all the previous transfers are valid
