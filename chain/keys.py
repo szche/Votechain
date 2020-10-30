@@ -19,36 +19,6 @@ def transfer_message(previous_signature, next_owner_public_key):
     return utils.serialize(message)
 
 
-print("-" * 10)
-# Get the authorized committee public key list
-committee_public_keys = utils.from_disk("voting_kit/committee_pubkeys.votechain")
-for committee in committee_public_keys:
-    print("Committee {} with public key {}".format( committee, short_key(committee_public_keys[committee]) ))
 
-
-#Get committee private keys - debugging purposes only
-committee_private_keys = utils.from_disk("voting_kit/committee_privkeys.votechain")
-committee1 = {
-        "name": "Krakow",
-        "privkey": committee_private_keys["Krakow"],
-        "pubkey": committee_public_keys["Krakow"]
-}
-committee2 = {
-        "name": "Warszawa",
-        "privkey": committee_private_keys["Warszawa"],
-        "pubkey": committee_public_keys["Warszawa"]
-}
-committee3 = {
-        "name": "Poznan",
-        "privkey": committee_private_keys["Poznan"],
-        "pubkey": committee_public_keys["Poznan"]
-}
-
-print("-" * 10)
-# Get the political parties public key list
-parties_public_keys = utils.from_disk("voting_kit/parties_pubkeys.votechain")
-#for party in parties_public_keys:
-#    print("Party {} with public key {}".format( party, short_key(parties_public_keys[party]) ))
-print("-" * 10)
 
 

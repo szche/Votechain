@@ -7,7 +7,7 @@ from chain.block import Block
 import sys
 import socketserver, socket
 
-comm = None 
+committee = None 
 host = "127.0.0.1"
 port = 10000
 address = (host, port)
@@ -124,13 +124,27 @@ def case_voter():
 
 
 def case_committee():
-    global comm
-    print("Committee {}".format(committee1["name"]))
-    print("Private key: {}".format( short_key(committee1["privkey"]) ))
-    print("Public key: {}".format( short_key(committee1["pubkey"]) ))
+    global committee 
+    print("Creating committee")
+    generator = input("Input committee password: ")
+    keypair = create_keypair(generator)
+    committee = Committee(keypair[0], keypair[1])
+
+    print("Your public key: {}".format( short_key(keypair[1]) ))
+    print("Your private key: {}".format( short_key(keypair[0]) ))
     print("-" * 20)
+
+    parties = committee.blocks[0].parties
+    print("\n=== Avaliable parties ===")
+    for party in parties:
+        print( f'{party: <40} with key {short_key(parties[party])}' )
+
+    auth_committees = committee.blocks[0].turns
+    print("\n=== Authorized committees ===")
+    for com in auth_committees:
+        print( f'{com[0]: <40} with key {short_key(com[1])}' )
+
     
-    comm = Committee(committee1["privkey"], committee1["pubkey"])
     """
     comm2 = Committee(committee2["privkey"], committee2["pubkey"])
     print(comm.blocks[0])

@@ -8,3 +8,5 @@ __pycache__/
 #Venv
 venv/
 data.txt
+
+generatory.txt

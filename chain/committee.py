@@ -53,7 +53,7 @@ class Committee:
     def next_committee_turn(self):
         blocks = len(self.blocks)
         turns = self.blocks[0].turns
-        return turns[blocks % len(turns)]
+        return turns[blocks % len(turns)][1]
 
     # When seeing a new block
     def handle_block(self, block):
@@ -111,9 +111,16 @@ class Committee:
                 timestamp=1604069368.4400604,
                 signature=b"\x08L]\xd5\x04>\xb0F\x07?)[\xbbq\t\x9b\xad}H(\xd8\xb3mh\xabe'\xc2O\x1a\xf0A\xbe\x18\xacG\xea\xa7[\xd4\xd8P\xdbM\r\xbb\xdc\xaf\xde144f\xafI\xc45\x83.\x8d8\xaf\xc0\x01")
         #Add the authorized committee's pubkeys
-        committee_public_keys = utils.from_disk("voting_kit/committee_pubkeys.votechain")
-        turns = [pubkey for pubkey in committee_public_keys.values()]
+        auth_committees = utils.from_disk("voting_kit/committees.votechain")
+        turns = [ (name, auth_committees[name]) for name in auth_committees] 
         block.turns = turns
+
+        #Add the parties pubkeys
+        block.parties = {}
+        parties_pubkeys = utils.from_disk("voting_kit/parties.votechain")
+        for party in parties_pubkeys:
+            block.parties[party] = parties_pubkeys[party]
+
         self.blocks.append(block)
         self.save_block()
         """
