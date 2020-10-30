@@ -131,18 +131,23 @@ def case_committee():
     print("-" * 20)
     
     comm = Committee(committee1["privkey"], committee1["pubkey"])
+    """
     comm2 = Committee(committee2["privkey"], committee2["pubkey"])
+    print(comm.blocks[0])
     # Create a block with no votes in it
-    block = Block([])
-    print(block)
+    block = Block(
+            votes = [],
+            prev_sig = comm2.blocks[0].signature
+            )
     block.sign(comm2.private_key)
     print(block)
+
+    #Verify the new block by both committees
     comm.handle_block(block)
     comm2.handle_block(block)
 
-    print(comm.blocks)
-    print(comm2.blocks)
-    
+    #print(comm2.blocks)
+    """
     #server = MyTCPServer(address, TCPHandler)
     #server.serve_forever()
 
