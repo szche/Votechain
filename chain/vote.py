@@ -21,12 +21,6 @@ class Vote:
         vote_transfer = Transfer(signature, recipient_public_key)
         self.transfers.append(vote_transfer)
 
-    # Show the history of this vote
-    def list_transfers(self):
-        print("PKW ", end="")
-        for transfer in self.transfers:
-            print("-> {} ".format( get_owner(transfer.public_key) ), end="")
-        print("")
 
 
 

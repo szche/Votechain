@@ -3,19 +3,21 @@ from chain.transfer import Transfer
 from chain.committee import Committee
 from chain.vote import Vote
 from chain.keys import * 
+from chain.block import Block
 import sys
 import socketserver, socket
 
 comm = None 
+host = "127.0.0.1"
+port = 10000
+address = (host, port)
 
 def prepare_data(command, data):
     return {
         "command": command,
         "data": data,
     }
-host = "127.0.0.1"
-port = 10000
-address = (host, port)
+
 
 class MyTCPServer(socketserver.TCPServer):
     allow_reuse_address = True
@@ -97,7 +99,7 @@ def case_voter():
 
     #Send your vote
     #Generate a second keypair - debugging only
-    keypair2 = create_keypair("THIS IS A TEST KEY GENERATOR")
+    keypair2 = create_keypair("cetnar@student.agh.edu.pl")
     print("Test pubkey: {}".format(short_key(keypair2[1])))
     my_vote = balance["data"][0]
     
@@ -112,7 +114,7 @@ def case_voter():
 
     #Check debugging balance
     debug_balance = send_message("balance", keypair2[1])
-    print("Debugging balance: {}".format( len(balance["data"]) ))
+    print("Debugging balance: {}".format( len(debug_balance["data"]) ))
     for vote in debug_balance["data"]:
         print(vote)
     #Check your balance
@@ -120,26 +122,29 @@ def case_voter():
     print("My balance: {}".format(len(balance["data"])))
 
 
+
 def case_committee():
     global comm
-    print("=" * 20)
-    print("You're running it as a committee")
-    print("-" * 20)
-    print("Committee {}".format(committee["name"]))
-    print("Private key: {}".format( short_key(committee["privkey"]) ))
-    print("Public key: {}".format( short_key(committee["pubkey"]) ))
+    print("Committee {}".format(committee1["name"]))
+    print("Private key: {}".format( short_key(committee1["privkey"]) ))
+    print("Public key: {}".format( short_key(committee1["pubkey"]) ))
     print("-" * 20)
     
-    comm = Committee(committee["privkey"], committee["pubkey"])
-    # TODO make the chain creator issue votes in genesis block
-    # Issue the votes to the voters
-    issue_votes = utils.from_disk("airdrop.votechain")
-    for voter in issue_votes:
-        vote = comm.issue(voter)
-        comm.validate_vote(vote)
+    comm = Committee(committee1["privkey"], committee1["pubkey"])
+    comm2 = Committee(committee2["privkey"], committee2["pubkey"])
+    # Create a block with no votes in it
+    block = Block([])
+    print(block)
+    block.sign(comm2.private_key)
+    print(block)
+    comm.handle_block(block)
+    comm2.handle_block(block)
+
+    print(comm.blocks)
+    print(comm2.blocks)
     
-    server = MyTCPServer(address, TCPHandler)
-    server.serve_forever()
+    #server = MyTCPServer(address, TCPHandler)
+    #server.serve_forever()
 
 
 if __name__ == "__main__":
