@@ -1,7 +1,8 @@
+#from . import Vote, utils
 from .vote import Vote
-from .keys import *
+from . import serialize 
 import time
-from . import utils
+#from . import utils
 
 class Block:
     def __init__(self, votes, timestamp=None, signature=None, prev_sig=None):
@@ -31,7 +32,7 @@ class Block:
     @property
     def message(self):
         data = [self.votes, self.timestamp, self.prev_sig, ]
-        return utils.serialize(data)
+        return serialize(data)
 
     def sign(self, private_key):
         self.signature = private_key.sign(self.message)

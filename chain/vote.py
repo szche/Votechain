@@ -1,7 +1,7 @@
 from uuid import uuid4
-from . import utils
-from .keys import *
 from .transfer import Transfer
+from ecdsa import SigningKey, VerifyingKey, SECP256k1
+from ecdsa.keys import BadSignatureError
 
 class Vote:
     def __init__(self, transfers):
