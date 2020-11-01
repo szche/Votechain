@@ -9,7 +9,7 @@ services:
         - "10000:10000"
     environment:
       PEERS: 'node1,node2'
-      BANK_ID: 0
+      NODE_ID: 0
 
   node1:
     image: main 
@@ -17,7 +17,7 @@ services:
         - "10001:10000"
     environment:
       PEERS: 'node0,node2'
-      BANK_ID: 1
+      NODE_ID: 1
 
   node2:
     image: main 
@@ -25,4 +25,4 @@ services:
         - "10002:10000"
     environment:
       PEERS: 'node0,node1'
-      BANK_ID: 2
+      NODE_ID: 2
