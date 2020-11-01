@@ -1,80 +1,17 @@
 import chain.utils 
 from chain.transfer import Transfer
-from chain.committee import Committee
+#from chain.committee import Committee
 from chain.vote import Vote
 from chain.keys import * 
 from chain.block import Block
 import sys
 import socketserver, socket
+import logging
+import os
+import threading
 
-committee = None 
-host = "127.0.0.1"
-port = 10000
-address = (host, port)
-
-def prepare_data(command, data):
-    return {
-        "command": command,
-        "data": data,
-    }
-
-
-class MyTCPServer(socketserver.TCPServer):
-    allow_reuse_address = True
-
-class TCPHandler(socketserver.BaseRequestHandler):
-
-    def respond(self, command, data):
-            print("Sending response: {} -> {}".format(command, data))
-            print("="* 20)
-            response = prepare_data(command, data)
-            serialized_response = utils.serialize(response)
-            self.request.sendall(serialized_response)
-
-
-    def handle(self):
-        raw_message = self.request.recv(100000)
-        message = utils.deserialize(raw_message)
-        command = message["command"]
-
-        if command == "ping":
-            print("Got a PING message")
-            self.respond("pong", "This is a pong message")
-        # Return an array of votes   
-        elif command == "balance":
-            public_key = message["data"]
-            print("Got a BALANCE request for key {}".format(short_key(public_key)))
-            votes = comm.fetch_vote(public_key)
-            self.respond("balance-response", votes)
-        # Track the vote
-        elif command == "vote":
-            vote_id = message["data"]
-            owner = comm.get_owner(vote_id)
-            print("Got a VOTE message of id {}".format(vote_id))
-            self.respond("vote-reposne", owner)
-        elif command == "send":
-            vote = message["data"]
-            print("Got a SEND message of vote {}".format(vote))
-            #Validate the vote
-            try:
-                comm.validate_vote(vote)
-                comm.cast_vote(vote)
-                self.respond("tx-response", "validated")
-            except:
-                self.respond("tx-response", "Not validated") 
-            
-
-def send_message(command, data):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect(address)
-
-    message = prepare_data(command, data)
-    serialized_message = utils.serialize(message)
-    sock.sendall(serialized_message)
-
-    message_data = sock.recv(1000000)
-    message = utils.deserialize(message_data)
-    return message
+#from chain.network import *
+from chain.committee import *
 
 
 # Generates (privkey, pubkey) pair
@@ -126,9 +63,19 @@ def case_voter():
 def case_committee():
     global committee 
     print("Creating committee")
-    generator = input("Input committee password: ")
+    node_id = int(os.environ["NODE_ID"])
+    generator = ""
+    if node_id == 0:
+        generator = "lajkonik"
+    elif node_id == 1:
+        generator = "syrenka"
+    elif node_id == 2:
+        generator = "koziolki"
+    logger.info(f"Started as {generator}")
+    #generator = input("Input committee password: ")
     keypair = create_keypair(generator)
     committee = Committee(keypair[0], keypair[1])
+    logger.info(f"My public key: {short_key(keypair[1])}")
 
     print("Your public key: {}".format( short_key(keypair[1]) ))
     print("Your private key: {}".format( short_key(keypair[0]) ))
@@ -144,26 +91,19 @@ def case_committee():
     for com in auth_committees:
         print( f'{com[0]: <40} with key {short_key(com[1])}' )
 
-    
-    """
-    comm2 = Committee(committee2["privkey"], committee2["pubkey"])
-    print(comm.blocks[0])
-    # Create a block with no votes in it
-    block = Block(
-            votes = [],
-            prev_sig = comm2.blocks[0].signature
-            )
-    block.sign(comm2.private_key)
-    print(block)
+    committee.schedule_next_block()
 
-    #Verify the new block by both committees
-    comm.handle_block(block)
-    comm2.handle_block(block)
-
-    #print(comm2.blocks)
     """
-    #server = MyTCPServer(address, TCPHandler)
-    #server.serve_forever()
+    print("-" * 20)
+    my_keys = create_keypair("MY TEST KEY")
+    friend_keys = create_keypair("FRIEND TEST KEY")
+    balance = committee.fetch_vote(my_keys[1])
+    print("My balance: {}".format(len(balance)))
+    my_vote = balance[0]
+    my_vote.sign_transfer(my_keys[0], friend_keys[1])
+    """
+    server = socketserver.TCPServer(("0.0.0.0", 10000), TCPHandler)
+    server.serve_forever()
 
 
 if __name__ == "__main__":

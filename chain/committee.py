@@ -4,6 +4,73 @@ from .vote import Vote
 from copy import deepcopy
 from .keys import *
 from .block import Block
+import os, threading
+import logging
+#from .network import *
+import time
+
+
+
+import socketserver, socket
+#import logging
+#from . import utils
+
+committee = None
+
+logging.basicConfig(
+    level="INFO",
+    format='%(asctime)-15s %(levelname)s %(message)s',
+)
+logger = logging.getLogger(__name__)
+
+host = "0.0.0.0"
+port = 10000
+address = (host, port)
+
+def prepare_data(command, data):
+    return {
+        "command": command,
+        "data": data,
+    }
+
+
+class MyTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+class TCPHandler(socketserver.BaseRequestHandler):
+
+    def respond(self, command, data):
+        print("Sending response: {} -> {}".format(command, data))
+        print("="* 20)
+        response = prepare_data(command, data)
+        serialized_response = utils.serialize(response)
+        self.request.sendall(serialized_response)
+
+
+    def handle(self):
+        raw_message = self.request.recv(100000).strip()
+        message = utils.deserialize(raw_message)
+        command = message["command"]
+        data = message["data"]
+        logger.info(f"Recieved  {message}")
+        if command == "ping":
+            print("Got a PING message")
+            self.respond("pong", "This is a pong message")
+        elif command == "block":
+            committee.handle_block(data)
+            
+
+def send_message(address, command, data, response=False):
+    message = prepare_data(command, data)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect(address)
+        s.sendall( utils.serialize(message) )
+        if response == True:
+            return utils.deserialize( s.recv(5000) )
+
+
+
+
 
 class Committee:
     def __init__(self, private_key, public_key):
@@ -15,6 +82,8 @@ class Committee:
         self.mempool = []   # Votes waiting to be included in the block
         self.genesis_block()    # On node start-up, get the contests of the genesis block
         #TODO sync with other nodes
+        #TODO dont start from genesis block only
+        self.peer_addresses = {(p, 10000) for p in os.environ['PEERS'].split(',')}
 
     # Return an array of votes
     # Owner of the public key is the owner of these votes
@@ -57,6 +126,7 @@ class Committee:
 
     # When seeing a new block
     def handle_block(self, block):
+        logger.info("Handling the block...")
         #Verify committee signature (Skip the genesis block)
         if len(self.blocks) > 0:
             public_key = self.next_committee_turn
@@ -82,12 +152,35 @@ class Committee:
 
         #Save the accepted block
         self.save_block()
-        print("all good")
+        logger.info("Block successfully added to the chain")
 
+    def create_block(self):
+        votes = deepcopy(self.mempool)
+        self.mempool = []
+        block = Block(
+                votes = votes,
+                prev_sig = self.blocks[-1].signature
+                )
+        block.sign(self.private_key)
+        return block
+
+
+    def submit_block(self):
+        # Create the block
+        block = self.create_block()
+        # Validate it and save it locally
+        self.handle_block(block)
+        # Broadcast the block
+        for address in self.peer_addresses:
+            logger.info(f"Sending to {address}")
+            send_message(address, "block", block)
 
     def schedule_next_block(self):
-        #TODO
-        pass
+        if self.public_key.to_string() == self.next_committee_turn.to_string():
+            logger.info(f"It's my turn")
+            time.sleep(5)
+            logger.info("Woke up")
+            threading.Timer(15, self.submit_block()).start()
 
     # Get the information from the genesis block
     def genesis_block(self):
