@@ -18,19 +18,17 @@ class TCPHandler(socketserver.BaseRequestHandler):
     def respond(self, command, data):
         logger.info("Sending response: {} -> {}".format(command, data))
         response = prepare_data(command, data)
-        serialized_response = serialize(response)
-        self.request.sendall(serialized_response)
+        self.request.sendall(response)
 
 
     def handle(self):
         global committee
-        logger.info("Recieved something...")
         message = read_message(self.request)
         command = message["command"]
         data = message["data"]
         logger.info(f"Recieved  {message}")
         if command == "ping":
-            print("Got a PING message")
+            logger.info("Got a ping message")
             self.respond("pong", "This is a pong message")
         elif command == "block":
             committee.handle_block(data)
@@ -48,14 +46,11 @@ def read_message(s):
     # Our protocol is: first 4 bytes signify message length
     raw_message_length = s.recv(4) or b"\x00"
     message_length = int.from_bytes(raw_message_length, 'big')
-    print(f"MSG length: {message_length}")
     
     while message_length > 0:
         chunk = s.recv(1024)
         message += chunk
-        print("Recieved chunk {}".format(len(chunk)))
         message_length -= len(chunk)
-        logger.info(f"Left: {message_length}")
         if len(chunk) == 0: break
     return deserialize(message)
 
@@ -362,7 +357,8 @@ def case_voter():
 
     #Check your balance
     balance = send_message(address, "balance", keypair[1], True)
-    print("My balance: {}".format(len(balance["data"])))
+    print(balance)
+    #print("My balance: {}".format(len(balance["data"])))
 
     # Send this vote to someone else
     new_owner = create_keypair(input("Input the generator of another address: "))
