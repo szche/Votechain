@@ -35,6 +35,9 @@ class TCPHandler(socketserver.BaseRequestHandler):
         elif command == "balance":
             balance = committee.fetch_vote(data)
             self.respond("balance-response", balance)
+        elif command == "sync":
+            new_blocks = committee.handle_sync(data)
+            self.respond("balance-response", new_blocks)
         #Recieve the vote, validate it and pass it to other peers
         elif command == "send-vote":
             logger.info("SOMEONE IS SENDING HIS VOTE")
@@ -308,6 +311,27 @@ class Committee:
         filename = f"data/{block_height}.votechain"
         to_disk(last_block, filename)
 
+    # Sync after falling behind or going offline
+    # Send the "sync" request with signature of your latest block
+    def sync(self):
+        latest_block_signature = self.blocks[-1].signature
+        response = send_message(address, "sync", latest_block_signature, True)
+        for new_block in response["data"]:
+            self.handle_block(new_block)
+
+
+    def handle_sync(self, latest_signature):
+        #Find which block does the other peer as the tip of the chain
+        new_blocks = []
+        add_this_block = False
+        for block in self.blocks[-1]:
+            if add_this_block == True:
+                new_blocks.append( deepcopy(block) )
+            # If you find his latest block, add every next block to the list
+            if block.signature == latest_signature:
+                add_this_block = True
+        return new_blocks
+    
 
 ##########################################
 #   Block class                          #
