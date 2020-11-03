@@ -1,4 +1,4 @@
-import sys, os, logging, pickle, time, threading, socketserver, socket
+import sys, os, logging, pickle, time, threading, socketserver, socket, re
 from copy import deepcopy
 from uuid import uuid4
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
@@ -8,43 +8,85 @@ from ecdsa.util import randrange_from_seed__trytryagain
 committee = None
 
 host = "127.0.0.1"
-port = 10000
-address = (host, port)
+PORT = 10000
+address = (host, PORT)
 
 class MyTCPServer(socketserver.TCPServer):
     allow_reuse_address = True
 
 class TCPHandler(socketserver.BaseRequestHandler):
+    def get_canonical_peer_address(self):
+        ip = self.client_address[0]
+        try:
+            hostname = socket.gethostbyaddr(ip)
+            hostname = re.search(r"_(.*?)_", hostname[0]).group(1)
+        except:
+            hostname = ip
+        return (hostname, PORT)
+
     def respond(self, command, data):
         logger.info("Sending response: {}".format(command))
         response = prepare_data(command, data)
         self.request.sendall(response)
-
 
     def handle(self):
         global committee
         message = read_message(self.request)
         command = message["command"]
         data = message["data"]
-        if command == "ping":
-            logger.info("Got a ping message")
-            self.respond("pong", "This is a pong message")
+        peer = self.get_canonical_peer_address()
+        #peer = self.client_address
+
+        # Handshake / Auth
+        if command == "connect":
+            if peer not in committee.pending_peers and peer not in committee.peers:
+                committee.pending_peers.append(peer)
+                logger.info(f'(handshake) Accepted "connect" request from "{peer[0]}"')
+                send_message(peer, "connect-response", None)
+
+        elif command == "connect-response":
+            if peer in committee.pending_peers and peer not in committee.peers:
+                committee.pending_peers.remove(peer)
+                committee.peers.append(peer)
+                logger.info(f'(handshake) Connected to "{peer[0]}"')
+                send_message(peer, "connect-response", None)
+
+                # Ask for peers
+                send_message(peer, "peers", None)
+
+        else:
+            assert peer in committee.peers, f"Rejecting {command} from unconnected {peer[0]}"
+
+        # Business logic
+
+        #Share your peers
+        if command == "peers":
+            send_message(peer, "peers-response", committee.peers)
+        elif command == "peers-response":
+            for peer in data:
+                committee.connect(peer)
+
+
+
+        #When discovering new block 
         elif command == "block":
             committee.handle_block(data)
+        #User asks for his balance
         elif command == "balance":
             balance = committee.fetch_balance(data)
             self.respond("balance-response", balance)
-        elif command == "sync":
-            new_blocks = committee.handle_sync(data)
-        #Recieve the vote, validate it and pass it to other peers
+        #User sends his vote
         elif command == "send-vote":
             committee.handle_vote(data)
+        #User asks for specific block
         elif command == "fetch-block":
             block = committee.fetch_block(data)
             self.respond("fetch-block-response", block) 
+        #User asks for specific vote
         elif command == "fetch-vote":
             vote = committee.fetch_vote(data)
             self.respond("fetch-vote-response", block) 
+
 
 def read_message(s):
     message = b''
@@ -79,7 +121,7 @@ def send_message(address, command, data, response=False):
 
 logging.basicConfig(
     level="INFO",
-    format='%(asctime)-15s %(levelname)s %(message)s',
+    format='%(message)s',
 )
 logger = logging.getLogger(__name__)
 
@@ -95,7 +137,6 @@ def create_keypair(generator):
 def short_key(public_key):
     public_key_hex = public_key.to_string().hex()
     return f"{public_key_hex[0:4]}...{public_key_hex[-5:]}"
-
 
 
 ##########################################
@@ -164,6 +205,7 @@ def transfer_message(previous_signature, next_owner_public_key):
             "next_owner_public_key": next_owner_public_key
     }
     return serialize(message)
+
 ##########################################
 #   Transfer class                       #
 ##########################################
@@ -180,7 +222,7 @@ class Transfer:
 #   Committee class                      #
 ##########################################
 class Committee:
-    def __init__(self, private_key, public_key):
+    def __init__(self, private_key, public_key, address):
         self.private_key = private_key
         self.public_key = public_key
         self.votes = {}     # Cached most recent versions of the votes (unspent UTXOS)
@@ -189,7 +231,22 @@ class Committee:
         self.genesis_block()    # On node start-up, get the contests of the genesis block
         #TODO sync with other nodes
         #TODO dont start from genesis block only
-        self.peer_addresses = {(p, 10000) for p in os.environ['PEERS'].split(',')}
+        #self.peers = {(p, 10000) for p in os.environ['PEERS'].split(',')}
+        self.peers = []  
+        self.pending_peers = []
+        self.address = address
+
+    def connect(self, peer):
+        if peer not in self.peers and peer != self.address:
+            logger.info(f'(handshake) Sent "connect" to {peer[0]}')
+            try:
+                send_message(peer, "connect", None)
+                self.pending_peers.append(peer)
+            except:
+                logger.info(f'(handshake) Node {peer[0]} offline')
+
+
+
 
     # Return an array of votes
     # Owner of the public key is the owner of these votes
@@ -205,10 +262,6 @@ class Committee:
 
     def fetch_block(self, nr):
         return self.blocks[nr-1]
-
-    # Returns which public key owns this vote
-    def get_owner(self, voteID):
-        return self.votes[voteID].transfers[-1].public_key
 
     def validate_vote(self, vote):
         # Check if all the previous transfers are valid
@@ -272,7 +325,7 @@ class Committee:
 
         #Save the accepted block
         self.save_block()
-        logger.info(f"Block {len(self.blocks)} added to the chain")
+        logger.info(f"Block accepted, height: {len(self.blocks)}")
 
     def create_block(self):
         votes = deepcopy(self.mempool)
@@ -291,14 +344,15 @@ class Committee:
         # Validate it and save it locally
         self.handle_block(block)
         # Broadcast the block
-        for address in self.peer_addresses:
+        for address in self.peers:
             logger.info(f"Sending to {address}")
             send_message(address, "block", block)
 
+    #For authorized "Block producers" only!
     def schedule_next_block(self):
         if self.public_key.to_string() == self.next_committee_turn.to_string():
             logger.info(f"MY TURN NOW!")
-            threading.Timer(15, self.submit_block, []).start()
+            threading.Timer(30, self.submit_block, []).start()
             
 
     # Upon reciving the vote, validate it, add it to your mempool and broadcast it further
@@ -310,10 +364,9 @@ class Committee:
         #assert vote.id not in mempool_ids
         #Otherwise, add it to your mempool and broadcast it
         self.mempool.append( deepcopy(vote) )
-        for address in self.peer_addresses:
+        for address in self.peers:
             logger.info(f"Broadcasting the tx further -> {address}")
             send_message(address, "send-vote", vote)
-        
 
     # Get the information from the genesis block
     # Genesis block comes pre-loaded with the software
@@ -336,28 +389,6 @@ class Committee:
         block_height = self.blocks.index(last_block)
         filename = f"data/{block_height}.votechain"
         to_disk(last_block, filename)
-
-    # Sync after falling behind or going offline
-    # Send the "sync" request with signature of your latest block
-    def sync(self):
-        latest_block_signature = self.blocks[-1].signature
-        response = send_message(address, "sync", latest_block_signature, True)
-        for new_block in response["data"]:
-            self.handle_block(new_block)
-
-
-    def handle_sync(self, latest_signature):
-        #Find which block does the other peer as the tip of the chain
-        new_blocks = []
-        add_this_block = False
-        for block in self.blocks[-1]:
-            if add_this_block == True:
-                new_blocks.append( deepcopy(block) )
-            # If you find his latest block, add every next block to the list
-            if block.signature == latest_signature:
-                add_this_block = True
-        return new_blocks
-
     
 
 ##########################################
@@ -457,26 +488,30 @@ def case_voter():
             continue
 
 
+def serve():
+    server = socketserver.TCPServer(("0.0.0.0", PORT), TCPHandler)
+    server.serve_forever()
+
 
 def case_committee():
     global committee
-    print("Creating committee")
-    node_id = int(os.environ["NODE_ID"])
+    node_name = os.environ["NAME"]
     generator = ""
-    if node_id == 0:
+    name = ""
+    if node_name == "node0":
         generator = "lajkonik"
-        logger.info("Started as Krakow committee")
-    elif node_id == 1:
+        name = "Krakow"
+    elif node_name == "node1":
         generator = "syrenka"
-        logger.info("Started as Warszawa committee")
-    elif node_id == 2:
+        name = "Warszawa"
+    elif node_name == "node2":
         generator = "koziolki"
-        logger.info("Started as Poznan committee")
-    #generator = input("Input committee password: ")
+        name = "Poznan"
     keypair = create_keypair(generator)
-    committee = Committee(keypair[0], keypair[1])
-    logger.info(f"My public key: {short_key(keypair[1])}")
+    committee = Committee(keypair[0], keypair[1], (node_name, PORT))
+    logger.info(f"Started as {name: <9} -> {short_key(keypair[1])}")
 
+    """
     print("Your public key: {}".format( short_key(keypair[1]) ))
     print("Your private key: {}".format( short_key(keypair[0]) ))
     print("-" * 20)
@@ -490,12 +525,18 @@ def case_committee():
     print("\n=== Authorized committees ===")
     for com in auth_committees:
         print( f'{com[0]: <40} with key {short_key(com[1])}' )
+    """
 
     committee.schedule_next_block()
 
-    server = socketserver.TCPServer(("0.0.0.0", 10000), TCPHandler)
-    server.serve_forever()
+    # Start server thread
+    server_thread = threading.Thread(target=serve, name="server")
+    server_thread.start()
 
+    #Connect to other peers
+    peers = [(p, PORT) for p in os.environ['PEERS'].split(',')]
+    for peer in peers:
+        committee.connect(peer)
 
 if __name__ == "__main__":
     mode = sys.argv[1]

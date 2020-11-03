@@ -3,4 +3,4 @@ ADD requirements.txt ./
 RUN pip install -r requirements.txt
 ADD main.py ./
 ADD data/ ./data/
-CMD ["python", "main.py", "committee"]
+CMD ["python", "-u", "main.py", "committee"]
