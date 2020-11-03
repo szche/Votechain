@@ -16,7 +16,7 @@ class MyTCPServer(socketserver.TCPServer):
 
 class TCPHandler(socketserver.BaseRequestHandler):
     def respond(self, command, data):
-        logger.info("Sending response: {} -> {}".format(command, data))
+        logger.info("Sending response: {}".format(command))
         response = prepare_data(command, data)
         self.request.sendall(response)
 
@@ -26,23 +26,25 @@ class TCPHandler(socketserver.BaseRequestHandler):
         message = read_message(self.request)
         command = message["command"]
         data = message["data"]
-        logger.info(f"Recieved  {message}")
         if command == "ping":
             logger.info("Got a ping message")
             self.respond("pong", "This is a pong message")
         elif command == "block":
             committee.handle_block(data)
         elif command == "balance":
-            balance = committee.fetch_vote(data)
+            balance = committee.fetch_balance(data)
             self.respond("balance-response", balance)
         elif command == "sync":
             new_blocks = committee.handle_sync(data)
-            self.respond("balance-response", new_blocks)
         #Recieve the vote, validate it and pass it to other peers
         elif command == "send-vote":
-            logger.info("SOMEONE IS SENDING HIS VOTE")
             committee.handle_vote(data)
-            
+        elif command == "fetch-block":
+            block = committee.fetch_block(data)
+            self.respond("fetch-block-response", block) 
+        elif command == "fetch-vote":
+            vote = committee.fetch_vote(data)
+            self.respond("fetch-vote-response", block) 
 
 def read_message(s):
     message = b''
@@ -136,6 +138,24 @@ class Vote:
         vote_transfer = Transfer(signature, recipient_public_key)
         self.transfers.append(vote_transfer)
 
+    def __str__(self):
+        output = ""
+        output += '======== Vote ========\n'
+        output += f"Vote id: {self.id}\n"
+        current_owner = self.transfers[-1].public_key
+        output += f"Owner: {short_key(current_owner)}\n"
+        if len(self.transfers) == 1:
+            output += "Previous owner: GENESIS-BLOCK\n"
+            output += f'Signature: GENESIS-BLOCK\n'
+        else:
+            previous_owner = self.transfers[-2].public_key
+            output += f"Previous owner: {short_key(previous_owner)}\n"
+            short_prev_sig = self.transfers[-1].signature.hex()[0:4] +"..."+ self.transfers[-1].signature.hex()[-5:]
+            output += f'Signature: {short_prev_sig}\n'
+
+        output += '=======================\n'
+        return output
+
 # Prepare a sending commitment
 # i.e. tick the box on your voting ticket but dont put it in the ballot box yet
 def transfer_message(previous_signature, next_owner_public_key):
@@ -173,12 +193,18 @@ class Committee:
 
     # Return an array of votes
     # Owner of the public key is the owner of these votes
-    def fetch_vote(self, public_key):
+    def fetch_balance(self, public_key):
         votes = []
         for vote in self.votes.values():
             if vote.transfers[-1].public_key.to_string() == public_key.to_string():
                 votes.append(vote)
         return votes
+    
+    def fetch_vote(self, voteID):
+        return self.votes[voteID]
+
+    def fetch_block(self, nr):
+        return self.blocks[nr-1]
 
     # Returns which public key owns this vote
     def get_owner(self, voteID):
@@ -277,10 +303,10 @@ class Committee:
 
     # Upon reciving the vote, validate it, add it to your mempool and broadcast it further
     def handle_vote(self, vote):
-        self.validate_vote(vote)
         mempool_ids = [vote.id for vote in self.mempool]
         #If this ID is already in the mempool, dont do anything
         if vote.id in mempool_ids: return
+        self.validate_vote(vote)
         #assert vote.id not in mempool_ids
         #Otherwise, add it to your mempool and broadcast it
         self.mempool.append( deepcopy(vote) )
@@ -331,6 +357,7 @@ class Committee:
             if block.signature == latest_signature:
                 add_this_block = True
         return new_blocks
+
     
 
 ##########################################
@@ -353,11 +380,13 @@ class Block:
         if self.signature == None:
             output += f'Signature: {self.signature}\n'
         else:
-            output += f'Signature: {self.signature.hex()}\n'
+            short_sig = self.signature.hex()[0:4] +"..."+ self.signature.hex()[-5:]
+            output += f'Signature: {short_sig}\n'
         if self.prev_sig == None:
             output += f'Prev_signature: {self.prev_sig}\n'
         else:
-            output += f'Prev_signature: {self.prev_sig.hex()}\n'
+            short_prev_sig = self.prev_sig.hex()[0:4] +"..."+ self.prev_sig.hex()[-5:]
+            output += f'Prev_signature: {short_prev_sig}\n'
         output += '=======================\n'
         return output
     
@@ -379,49 +408,53 @@ def case_voter():
     print("Your private key:\t {}".format(short_key(keypair[0])))
     print("Your public key:\t {}".format(short_key(keypair[1])))
 
-    #Check your balance
-    balance = send_message(address, "balance", keypair[1], True)
-    print(balance)
-    #print("My balance: {}".format(len(balance["data"])))
+    while True:
+        print("=" * 20)
+        print("Menu:")
+        print("1) Check your balance")
+        print("2) Check balance of someone else")
+        print("3) Send to")
+        print("4) Fetch block")
+        print("5) Fetch vote")
+        print("=" * 20)
 
-    # Send this vote to someone else
-    new_owner = create_keypair(input("Input the generator of another address: "))
-    my_vote = balance["data"][0]
-    my_vote.sign_transfer(keypair[0], new_owner[1])
-    send_message(address, "send-vote", my_vote)
-
-    #Check my and someone's balance
-    balance = send_message(address, "balance", keypair[1], True)
-    print("My balance: {}".format(len(balance["data"])))
-
-    balance = send_message(address, "balance", new_owner[1], True)
-    print("My balance: {}".format(len(balance["data"])))
-
-    """
-    #Send your vote
-    #Generate a second keypair - debugging only
-    keypair2 = create_keypair("test_case")
-    print("Test pubkey: {}".format(short_key(keypair2[1])))
-    my_vote = balance["data"][0]
-    
-    #Check who's the owner of this vote
-    vote_owner = send_message("vote", my_vote.id)
-    print("Owner of this vote: {}".format(short_key(vote_owner["data"])))
-
-    #Now send the vote to the debuggin address
-    my_vote.sign_transfer(keypair[0], keypair2[1])
-    send_vote = send_message("send", my_vote)
-    print("Sending status: {}".format(send_vote["data"]))
-
-    #Check debugging balance
-    debug_balance = send_message("balance", keypair2[1])
-    print("Debugging balance: {}".format( len(debug_balance["data"]) ))
-    for vote in debug_balance["data"]:
-        print(vote)
-    #Check your balance
-    balance = send_message("balance", keypair[0])
-    print("My balance: {}".format(len(balance["data"])))
-    """
+        option = int( input("What's your choice: ") )
+        #Check your balance
+        if option == 1:
+            balance = send_message(address, "balance", keypair[1], True)
+            print("Your balance is: {}".format(len(balance["data"])))
+            for vote in balance["data"]:
+                print(vote)
+        #Check the balance of someone else
+        elif option == 2:
+            new_id = create_keypair( input("Input the generator of another address: ") )
+            balance = send_message(address, "balance", new_id[1], True)
+            print("His balance is: {}".format(len(balance["data"])))
+            for vote in balance["data"]:
+                print(vote)
+        #Send to
+        elif option == 3:
+            new_owner = create_keypair( input("Input the generator of another address: ") )
+            my_balance = send_message(address, "balance", keypair[1], True)
+            if len(my_balance["data"]) == 0:
+                print("You do not have enough votes!")
+                continue
+            my_vote = my_balance["data"][0]
+            my_vote.sign_transfer(keypair[0], new_owner[1])
+            send_message(address, "send-vote", my_vote)
+        #Fetch block
+        elif option == 4:
+            blockNR = int(input("What's the block nr: "))
+            block = send_message(address, "fetch-block", blockNR, True)
+            print(block["data"])
+        #Fetch vote
+        elif option == 5:
+            voteID = input("What's the vote id: ")
+            vote = send_message(address, "fetch-vote", voteID, True)
+            print(vote["data"])
+        else:
+            print("Invalid option")
+            continue
 
 
 
@@ -460,15 +493,6 @@ def case_committee():
 
     committee.schedule_next_block()
 
-    """
-    print("-" * 20)
-    my_keys = create_keypair("MY TEST KEY")
-    friend_keys = create_keypair("FRIEND TEST KEY")
-    balance = committee.fetch_vote(my_keys[1])
-    print("My balance: {}".format(len(balance)))
-    my_vote = balance[0]
-    my_vote.sign_transfer(my_keys[0], friend_keys[1])
-    """
     server = socketserver.TCPServer(("0.0.0.0", 10000), TCPHandler)
     server.serve_forever()
 
