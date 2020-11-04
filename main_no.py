@@ -1,6 +1,7 @@
 import sys, logging, pickle, time, threading, socketserver, socket, re, requests
 from copy import deepcopy
 from uuid import uuid4
+from datetime import datetime
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
 from ecdsa.keys import BadSignatureError
 from ecdsa.util import randrange_from_seed__trytryagain
@@ -9,6 +10,7 @@ committee = None
 
 PORT = 10000
 
+#TODO fetch the peers from tracker
 """
 GET THE PEERS LIST FROM  IT LATER
 MY_IP_LINK = "https://chadam.pl/tracker/ip.php"
@@ -16,11 +18,13 @@ PEERS_LIST = "https://chadam.pl/tracker/"
 """
 
 
+# Return byte-like objects from hex values
+# Used for signing and verifying etc.
 def pubkey_from_hex(pubkey):
     return VerifyingKey.from_string( bytes().fromhex(pubkey), curve=SECP256k1 )
 
 def sig_from_hex(signature):
-    return bytes().fromhex(data)
+    return bytes().fromhex(signature)
 
 def privkey_from_hex(privkey):
     return SigningKey.from_string( bytes().fromhex(privkey), curve=SECP256k1 )
@@ -28,10 +32,10 @@ def privkey_from_hex(privkey):
 # Change public key, private key and signature to hex values
 def to_hex(data):
     # Private key
-    if isinstance(data, SigningKey):
+    if isinstance(data, SigningKey):        #Private key
         return data.to_string().hex()
     # Public key
-    elif isinstance(data, VerifyingKey):
+    elif isinstance(data, VerifyingKey):    # Public key
         return data.to_string().hex()
     # Else (Signature)
     return data.hex()
@@ -54,9 +58,9 @@ class TCPHandler(socketserver.BaseRequestHandler):
         command = message["command"]
         data = message["data"]
         peer = self.client_address
-        logger.info(f"Got a {message} from {peer}")
-        peer = (peer[0], PORT)
+        logger.info(f"Got a {command} from {peer}")
 
+        #TODO use auth for block propagation and peer sharing
         """
         SKIP THE AUTH FOR NOW
         # Handshake / Auth
@@ -300,7 +304,7 @@ class Committee:
         previous_transfer = issue_transfer
         for next_transfer in vote.transfers[1::]:
             message = transfer_message(previous_transfer.signature, next_transfer.public_key)
-            assert pubkey_from_hex(previous_transfer.public_key).verify(next_transfer.signature, message)
+            assert pubkey_from_hex(previous_transfer.public_key).verify(sig_from_hex(next_transfer.signature), message)
             previous_transfer = next_transfer
         
     # Update the cached vote 
@@ -371,7 +375,8 @@ class Committee:
             logger.info(f"Sending to {address}")
             send_message(address, "block", block)
 
-    #For authorized "Block producers" only!
+    # For authorized "Block producers" only!
+    # Wont work for any other node
     def schedule_next_block(self):
         if self.public_key == self.next_committee_turn:
             logger.info(f"MY TURN NOW!")
@@ -384,6 +389,7 @@ class Committee:
         #If this ID is already in the mempool, dont do anything
         if vote.id in mempool_ids: return
         self.validate_vote(vote)
+        logger.info("Vote validated")
         #assert vote.id not in mempool_ids
         #Otherwise, add it to your mempool and broadcast it
         self.mempool.append( deepcopy(vote) )
@@ -391,11 +397,12 @@ class Committee:
             logger.info(f"Broadcasting the tx further -> {address}")
             send_message(address, "send-vote", vote)
 
-    # Get the information from the genesis block
+    # Create the genesis block
     # Genesis block comes pre-loaded with the software
-    # TODO: check that the checksum of the genesis block is correct
     def genesis_block(self):
         assert len(self.blocks) == 0
+        # Initial vote airdrop,
+        # (Issuing the voting ballots to the voters)
         votes = [
                     Vote( 
                             transfers=[Transfer(None,"76d0926fb152cf78ceccd9343b1b6d476d0cc09235b8d9dc6a6414e1dbbb023c8ed968dae7d4a592b78e1fb0b9e7abe33530cfd0908ef1de5e8462af4ddc0682" )],
@@ -614,8 +621,8 @@ class Committee:
                     prev_sig = None,
                 )
         block.parties = {
-                "Partia X": "50536b106fb153aaefeb7e87c932ed809c6e991dcda08c6cd149bc8379496c5fac82038ee9c3af49a0350e2e1fe0e1dc437a432d1dbd0f5b5cd52f877e7483e7",
-                "Partia Y": "5a8a5652ac4e2d48f464dcc0b32b7daa27c5a4e843cea80db282e5d0a2d882bd2c8e0c62ea7e4aed7db7621ee90ce5be9ce57342f4cfd9fabdcb7f72f1108eb8",
+                "X": "50536b106fb153aaefeb7e87c932ed809c6e991dcda08c6cd149bc8379496c5fac82038ee9c3af49a0350e2e1fe0e1dc437a432d1dbd0f5b5cd52f877e7483e7",
+                "Y": "5a8a5652ac4e2d48f464dcc0b32b7daa27c5a4e843cea80db282e5d0a2d882bd2c8e0c62ea7e4aed7db7621ee90ce5be9ce57342f4cfd9fabdcb7f72f1108eb8",
                 }
         block.committees = {
                 "Krakow": "49e642a989a2c7352373e23d624ca1a1794f865c0a331790e67261427f0f226ab9495c09d76d3c7cb6486c291ceef0109b0eeea89ecdaf14f10dba1098a587d9",
@@ -625,16 +632,6 @@ class Committee:
             self.votes[vote.id] = deepcopy(vote)
         self.blocks.append(block)
         self.save_block()
-
-        """
-        block = from_disk("data/0.votechain")
-        for vote in block.votes:
-            self.votes[vote.id] = deepcopy(vote)
-        self.blocks.append(block)
-        logger.info("Cached votes: ")
-        for vote in self.votes.values():
-            logger.info(f"{short_key(vote.transfers[-1].public_key)}")
-        """
         
     #Save the last block
     def save_block(self):
@@ -660,7 +657,7 @@ class Block:
         output = ""
         output += '======== Block ========\n'
         output += f'Txs: {len(self.votes)}\n'
-        output += f'Timestamp: {self.timestamp}\n'
+        output += f'Timestamp: {datetime.fromtimestamp(self.timestamp)}\n'
         if self.signature == None:
             output += f'Signature: {self.signature}\n'
         else:
@@ -680,10 +677,8 @@ class Block:
         return serialize(data)
 
     def sign(self, private_key):
-        signature = to_hex( privkey_from_hex(private_key).sign(self.message)
- )
+        signature = to_hex( privkey_from_hex(private_key).sign(self.message) )
         self.signature = signature
-        #to_hex(self.signature) = privkey_from_hex(private_key).sign(self.message)
 
 
 
@@ -691,7 +686,6 @@ def case_voter():
     print("=" * 20)
     # Generate my private key
     keypair = create_keypair(input("Input your email address: "))
-    print(keypair)
     print("Your private key:\t {}".format(short_key(keypair[0])))
     print("Your public key:\t {}".format(short_key(keypair[1])))
     address = ('localhost', 10000)
@@ -704,7 +698,6 @@ def case_voter():
         print("3) Send to")
         print("4) Fetch block")
         print("5) Fetch vote")
-        print(f"Address: {address}")
         print("=" * 20)
 
         option = int( input("What's your choice: ") )
@@ -730,6 +723,7 @@ def case_voter():
                 continue
             my_vote = my_balance["data"][0]
             my_vote.sign_transfer(keypair[0], new_owner[1])
+            print(my_vote)
             send_message(address, "send-vote", my_vote)
         #Fetch block
         elif option == 4:
