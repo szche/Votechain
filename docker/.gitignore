@@ -1,0 +1,16 @@
+#Vim files
+.*~
+*.swp
+*.un~
+__pycache__/
+
+
+#Venv
+venv/
+data.txt
+
+generatory.txt
+
+#For debugging
+chain/
+data/
