@@ -1,4 +1,4 @@
-import sys, os, logging, pickle, time, threading, socketserver, socket, re
+import sys, os, logging, pickle, time, threading, socketserver, socket, re, requests
 from copy import deepcopy
 from uuid import uuid4
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
@@ -10,6 +10,8 @@ committee = None
 host = "127.0.0.1"
 PORT = 10000
 address = (host, PORT)
+MY_IP_LINK = "https://chadam.pl/tracker/ip.php"
+PEERS_LIST = "https://chadam.pl/tracker/"
 
 class MyTCPServer(socketserver.TCPServer):
     allow_reuse_address = True
@@ -229,9 +231,6 @@ class Committee:
         self.blocks = []    # The chain
         self.mempool = []   # Votes waiting to be included in the block
         self.genesis_block()    # On node start-up, get the contests of the genesis block
-        #TODO sync with other nodes
-        #TODO dont start from genesis block only
-        #self.peers = {(p, 10000) for p in os.environ['PEERS'].split(',')}
         self.peers = []  
         self.pending_peers = []
         self.address = address
@@ -495,6 +494,13 @@ def serve():
 
 def case_committee():
     global committee
+    my_ip = requests.get(MY_IP_LINK).text
+    logger.info(f"My IP is {my_ip}")
+
+    peers_from_tracker = requests.get(PEERS_LIST).text
+    peers_list = [ peer for peer in peers_from_tracker.split(";") if peer != "" and peer != my_ip]
+    print(peers_list)
+
     node_name = os.environ["NAME"]
     generator = ""
     name = ""
