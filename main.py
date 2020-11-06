@@ -93,6 +93,11 @@ class TCPHandler(socketserver.BaseRequestHandler):
             for peer in data:
                 committee.connect(peer)
 
+        elif command == "sync":
+            blocks = committee.sync_request(data)
+            logger.info(f'Served "sync" request with { len(blocks) } blocks')
+            self.respond("sync-response", blocks)
+
         #When discovering new block 
         elif command == "block":
             committee.handle_block(data)
@@ -324,12 +329,12 @@ class Committee:
 
     # When seeing a new block
     def handle_block(self, block):
-        print(block)
+        print("Handling new block: {}".format(block))
         #Verify committee signature (Skip the genesis block)
         if len(self.blocks) > 1:
             public_key = self.next_committee_turn
             logger.info(f"Block should be produced by {short_key(public_key)}")
-            pubkey_from_hex(public_key).verify(block.signature, block.message)
+            pubkey_from_hex(public_key).verify(sig_from_hex(block.signature), block.message)
 
         #Verify previous signature
         assert self.blocks[-1].signature == block.prev_sig
@@ -368,6 +373,7 @@ class Committee:
     def submit_block(self):
         # Create the block
         block = self.create_block()
+        print(f"Creating the block: {block}")
         # Validate it and save it locally
         self.handle_block(block)
         # Broadcast the block
@@ -380,7 +386,7 @@ class Committee:
     def schedule_next_block(self):
         if self.public_key == self.next_committee_turn:
             logger.info(f"MY TURN NOW!")
-            threading.Timer(30, self.submit_block, []).start()
+            threading.Timer(10, self.submit_block, []).start()
             
 
     # Upon reciving the vote, validate it, add it to your mempool and broadcast it further
@@ -626,7 +632,7 @@ class Committee:
                 }
         block.committees = {
                 "Krakow": "49e642a989a2c7352373e23d624ca1a1794f865c0a331790e67261427f0f226ab9495c09d76d3c7cb6486c291ceef0109b0eeea89ecdaf14f10dba1098a587d9",
-                "Warszawa": "9f229d18ba0386d1bbf9c5b8298c3ae05dfc85ca24b42e72c48a341c9792e52faa3797e468bcbb873f5123e88d4e7ac824732473f99fa9eb0d576df54574c420",
+                #"Warszawa": "9f229d18ba0386d1bbf9c5b8298c3ae05dfc85ca24b42e72c48a341c9792e52faa3797e468bcbb873f5123e88d4e7ac824732473f99fa9eb0d576df54574c420",
                 }
         for vote in block.votes:
             self.votes[vote.id] = deepcopy(vote)
@@ -639,6 +645,20 @@ class Committee:
         block_height = self.blocks.index(last_block)
         filename = f"data/{block_height}.votechain"
         to_disk(last_block, filename)
+
+    # Get the signature of other peer's latest block
+    # Return every block that is after that block
+    def sync_request(self, top_block_sig):
+        to_sync = []
+        for block in self.blocks[::-1]:
+            if block.signature == top_block_sig:
+                break
+            to_sync.append(block)
+        return to_sync[::-1]
+    
+    def handle_sync(self, blocks):
+        for block in blocks:
+            self.handle_block(block)
     
 
 ##########################################
@@ -690,6 +710,19 @@ def case_voter():
     print("Your public key:\t {}".format(short_key(keypair[1])))
     address = ('localhost', 10000)
 
+    global committee
+
+    my_ip = "192.168.0.101"
+    committee = Committee(keypair[0], keypair[1], (my_ip, PORT))
+    
+    blocks_sync = send_message(address, "sync", committee.blocks[-1].signature, True)
+    for missing_block in blocks_sync["data"]:
+        signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
+        print(f"Got a block with sig: {signature}")
+        committee.handle_block(missing_block)
+
+    print("Length of chain: {}".format( len(committee.blocks) ))
+
     while True:
         print("=" * 20)
         print("Menu:")
@@ -698,6 +731,7 @@ def case_voter():
         print("3) Send to")
         print("4) Fetch block")
         print("5) Fetch vote")
+        print("6) Sync")
         print("=" * 20)
 
         option = int( input("What's your choice: ") )
@@ -735,6 +769,13 @@ def case_voter():
             voteID = input("What's the vote id: ")
             vote = send_message(address, "fetch-vote", voteID, True)
             print(vote["data"])
+        #Sync
+        elif option == 6:
+            blockSig = input("What's the block sig: ")
+            vote = send_message(address, "sync", blockSig, True)
+            for missing_block in vote["data"]:
+                signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
+                print(f"Got a block with sig: {signature}")
         else:
             print("Invalid option")
             continue
