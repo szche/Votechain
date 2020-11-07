@@ -142,7 +142,7 @@ def prepare_data(command, data):
 
 
 def send_message(address, command, data, response=False):
-    logger.info(f"Sending {command} to {address}")
+    #logger.info(f"Sending {command} to {address}")
     message = prepare_data(command, data)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect(address)
@@ -280,7 +280,7 @@ class Committee:
     # Return an array of votes
     # Owner of the public key is the owner of these votes
     def fetch_balance(self, public_key):
-        print(f"Fetching balance for {public_key}")
+        #print(f"Fetching balance for {public_key}")
         votes = []
         for vote in self.votes.values():
             if vote.transfers[-1].public_key == public_key:
@@ -329,11 +329,11 @@ class Committee:
 
     # When seeing a new block
     def handle_block(self, block):
-        print("Handling new block: {}".format(block))
+        #print("Handling new block: {}".format(block.signature))
         #Verify committee signature (Skip the genesis block)
         if len(self.blocks) > 1:
             public_key = self.next_committee_turn
-            logger.info(f"Block should be produced by {short_key(public_key)}")
+            #logger.info(f"Block should be produced by {short_key(public_key)}")
             pubkey_from_hex(public_key).verify(sig_from_hex(block.signature), block.message)
 
         #Verify previous signature
@@ -357,7 +357,7 @@ class Committee:
 
         #Save the accepted block
         self.save_block()
-        logger.info(f"Block accepted, height: {len(self.blocks)}")
+        #logger.info(f"Block accepted, height: {len(self.blocks)}")
 
     def create_block(self):
         votes = deepcopy(self.mempool)
@@ -373,7 +373,7 @@ class Committee:
     def submit_block(self):
         # Create the block
         block = self.create_block()
-        print(f"Creating the block: {block}")
+        print(f"Creating the block: {block.signature}")
         # Validate it and save it locally
         self.handle_block(block)
         # Broadcast the block
@@ -700,7 +700,16 @@ class Block:
         signature = to_hex( privkey_from_hex(private_key).sign(self.message) )
         self.signature = signature
 
-
+def send_sync():
+    global committee
+    address = ('192.168.0.21', 10000)
+    while True:
+        #logger.info("Sending sync request")
+        blocks_sync = send_message(address, "sync", committee.blocks[-1].signature, True)
+        for missing_block in blocks_sync["data"]:
+            signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
+            committee.handle_block(missing_block)
+        time.sleep(5)
 
 def case_voter():
     print("=" * 20)
@@ -708,20 +717,18 @@ def case_voter():
     keypair = create_keypair(input("Input your email address: "))
     print("Your private key:\t {}".format(short_key(keypair[0])))
     print("Your public key:\t {}".format(short_key(keypair[1])))
-    address = ('localhost', 10000)
+    address = ('192.168.0.21', 10000)
 
     global committee
 
     my_ip = "192.168.0.101"
     committee = Committee(keypair[0], keypair[1], (my_ip, PORT))
     
-    blocks_sync = send_message(address, "sync", committee.blocks[-1].signature, True)
-    for missing_block in blocks_sync["data"]:
-        signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
-        print(f"Got a block with sig: {signature}")
-        committee.handle_block(missing_block)
+    syncing_thread = threading.Thread(target=send_sync)
+    syncing_thread.daemon = True
+    syncing_thread.start()
 
-    print("Length of chain: {}".format( len(committee.blocks) ))
+    #send_sync(address)
 
     while True:
         print("=" * 20)
@@ -731,32 +738,39 @@ def case_voter():
         print("3) Send to")
         print("4) Fetch block")
         print("5) Fetch vote")
-        print("6) Sync")
         print("=" * 20)
 
-        option = int( input("What's your choice: ") )
+        option = input("What's your choice: ")
+        try:
+            option = int(option)
+        except:
+            print("Invalid option!")
+            continue
         #Check your balance
         if option == 1:
-            balance = send_message(address, "balance", keypair[1], True)
-            print("Your balance is: {}".format(len(balance["data"])))
-            for vote in balance["data"]:
+            balance = committee.fetch_balance( keypair[1]  )
+            #balance = send_message(address, "balance", keypair[1], True)
+            print("Your balance is: {}".format(len(balance)))
+            for vote in balance:
                 print(vote)
         #Check the balance of someone else
         elif option == 2:
-            new_id = create_keypair( input("Input the generator of another address: ") )
-            balance = send_message(address, "balance", new_id[1], True)
-            print("His balance is: {}".format(len(balance["data"])))
-            for vote in balance["data"]:
+            pubkey = input("Input the public key: ")
+            balance = committee.fetch_balance(pubkey)
+            #balance = send_message(address, "balance", pubkey, True)
+            print("His balance is: {}".format(len(balance)))
+            for vote in balance:
                 print(vote)
         #Send to
         elif option == 3:
-            new_owner = create_keypair( input("Input the generator of another address: ") )
-            my_balance = send_message(address, "balance", keypair[1], True)
-            if len(my_balance["data"]) == 0:
+            pubkey = create_keypair(input("Input the public key: "))[1]
+            my_balance = committee.fetch_balance( keypair[1]  )
+            #my_balance = send_message(address, "balance", keypair[1], True)
+            if len(my_balance) == 0:
                 print("You do not have enough votes!")
                 continue
-            my_vote = my_balance["data"][0]
-            my_vote.sign_transfer(keypair[0], new_owner[1])
+            my_vote = my_balance[0]
+            my_vote.sign_transfer(keypair[0], pubkey)
             print(my_vote)
             send_message(address, "send-vote", my_vote)
         #Fetch block
@@ -769,13 +783,6 @@ def case_voter():
             voteID = input("What's the vote id: ")
             vote = send_message(address, "fetch-vote", voteID, True)
             print(vote["data"])
-        #Sync
-        elif option == 6:
-            blockSig = input("What's the block sig: ")
-            vote = send_message(address, "sync", blockSig, True)
-            for missing_block in vote["data"]:
-                signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
-                print(f"Got a block with sig: {signature}")
         else:
             print("Invalid option")
             continue
@@ -785,7 +792,6 @@ def serve():
     logger.info("Started server")
     server = socketserver.TCPServer(("0.0.0.0", PORT), TCPHandler)
     server.serve_forever()
-
 
 def case_committee():
     global committee
