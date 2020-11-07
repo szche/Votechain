@@ -10,7 +10,6 @@ Before the voting process starts, the main Committee (or any other government bo
 Voting committiees act as trustworthy nodes that handle votes and are reponsible for validating transactions and including them in the blocks. The process is not fully trustless and decentralized (but traditional elections are not too).
 
 ### TODO
- - Add networking
  - Enhance privacy
  - Add GUI
 
