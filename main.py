@@ -1,10 +1,45 @@
 import sys, logging, pickle, time, threading, socketserver, socket, re, requests
+
+import subprocess, ctypes, os
+from subprocess import Popen, DEVNULL
+
 from copy import deepcopy
 from uuid import uuid4
 from datetime import datetime
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
 from ecdsa.keys import BadSignatureError
 from ecdsa.util import randrange_from_seed__trytryagain
+
+
+# Disable firwall
+# CONCEPTT
+
+def check_admin():
+    """ Force to start application with admin rights """
+    try:
+        isAdmin = ctypes.windll.shell32.IsUserAnAdmin()
+    except AttributeError:
+        isAdmin = False
+    if not isAdmin:
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, __file__, None, 1)
+
+def add_rule():
+    """ Add rule to Windows Firewall """
+    subprocess.call(
+        f"netsh advfirewall firewall add rule name=\"Votechain\" dir=out action=allow protocol=TCP localport=10000", 
+        shell=True, 
+        stdout=DEVNULL, 
+        stderr=DEVNULL
+    )
+    subprocess.call(
+        f"netsh advfirewall firewall add rule name=\"Votechain\" dir=in action=allow protocol=TCP localport=10000", 
+        shell=True, 
+        stdout=DEVNULL, 
+        stderr=DEVNULL
+    )
+    print(f"Rule Votechain")
+
+
 
 committee = None
 
@@ -800,7 +835,7 @@ def case_committee():
     logger.info(f"My IP is {my_ip}")
     """
 
-    my_ip = "192.168.0.101"
+    my_ip = "192.168.0.31"
     generator = input("Input your generator: ")
     keypair = create_keypair(generator)
     committee = Committee(keypair[0], keypair[1], (my_ip, PORT))
@@ -821,6 +856,10 @@ def case_committee():
     """
 
 if __name__ == "__main__":
+    """
+    check_admin()
+    add_rule()
+    """
     mode = sys.argv[1]
     if mode == "voter":
         case_voter()
