@@ -1,8 +1,4 @@
-import sys, logging, pickle, time, threading, socketserver, socket, re, requests
-
-import subprocess, ctypes, os
-from subprocess import Popen, DEVNULL
-
+import sys, logging, pickle, time, threading, socketserver, socket, re, requests, os
 from copy import deepcopy
 from uuid import uuid4
 from datetime import datetime
@@ -10,34 +6,6 @@ from ecdsa import SigningKey, VerifyingKey, SECP256k1
 from ecdsa.keys import BadSignatureError
 from ecdsa.util import randrange_from_seed__trytryagain
 
-
-# Disable firwall
-# CONCEPTT
-
-def check_admin():
-    """ Force to start application with admin rights """
-    try:
-        isAdmin = ctypes.windll.shell32.IsUserAnAdmin()
-    except AttributeError:
-        isAdmin = False
-    if not isAdmin:
-        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, __file__, None, 1)
-
-def add_rule():
-    """ Add rule to Windows Firewall """
-    subprocess.call(
-        f"netsh advfirewall firewall add rule name=\"Votechain\" dir=out action=allow protocol=TCP localport=10000", 
-        shell=True, 
-        stdout=DEVNULL, 
-        stderr=DEVNULL
-    )
-    subprocess.call(
-        f"netsh advfirewall firewall add rule name=\"Votechain\" dir=in action=allow protocol=TCP localport=10000", 
-        shell=True, 
-        stdout=DEVNULL, 
-        stderr=DEVNULL
-    )
-    print(f"Rule Votechain")
 
 
 
@@ -129,28 +97,43 @@ class TCPHandler(socketserver.BaseRequestHandler):
                 committee.connect(peer)
 
         elif command == "sync":
-            blocks = committee.sync_request(data)
-            logger.info(f'Served "sync" request with { len(blocks) } blocks')
-            self.respond("sync-response", blocks)
+            try:
+                blocks = committee.sync_request(data)
+                logger.info(f'Served "sync" request with { len(blocks) } blocks')
+                self.respond("sync-response", blocks)
+            except:
+                self.respond("sync-response", "error")
 
         #When discovering new block 
         elif command == "block":
-            committee.handle_block(data)
+            try:
+                committee.handle_block(data)
         #User asks for his balance
         elif command == "balance":
-            balance = committee.fetch_balance(data)
-            self.respond("balance-response", balance)
+            try:
+                balance = committee.fetch_balance(data)
+                self.respond("balance-response", balance)
+            except:
+                self.respond("balance-response", "error")
+
         #User sends his vote
         elif command == "send-vote":
-            committee.handle_vote(data)
+            try: 
+                committee.handle_vote(data)
         #User asks for specific block
         elif command == "fetch-block":
-            block = committee.fetch_block(data)
-            self.respond("fetch-block-response", block) 
+            try:
+                block = committee.fetch_block(data)
+                self.respond("fetch-block-response", block) 
+            except:
+                self.respond("balance-response", "error")
         #User asks for specific vote
         elif command == "fetch-vote":
-            vote = committee.fetch_vote(data)
-            self.respond("fetch-vote-response", block) 
+            try:
+                vote = committee.fetch_vote(data)
+                self.respond("fetch-vote-response", block) 
+            except:
+                self.respond("fetch-vote-response", "error")
 
 
 def read_message(s):
@@ -855,13 +838,17 @@ def case_committee():
         committee.connect(peer)
     """
 
+
 if __name__ == "__main__":
-    """
-    check_admin()
-    add_rule()
-    """
-    mode = sys.argv[1]
-    if mode == "voter":
+    # Create the 'data' folder if it doesn't exist
+    if os.path.isdir('data') == False:
+        try:
+            os.mkdir('data')
+        except:
+            print("Error while creating \'data\' directory")
+            sys.exit(1)
+
+    if len(sys.argv) == 1:
         case_voter()
-    elif mode == "committee":
+    else:
         case_committee()
