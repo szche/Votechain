@@ -6,9 +6,6 @@ from ecdsa import SigningKey, VerifyingKey, SECP256k1
 from ecdsa.keys import BadSignatureError
 from ecdsa.util import randrange_from_seed__trytryagain
 
-
-
-
 committee = None
 
 PORT = 10000
@@ -18,7 +15,14 @@ PORT = 10000
 GET THE PEERS LIST FROM  IT LATER
 MY_IP_LINK = "https://chadam.pl/tracker/ip.php"
 PEERS_LIST = "https://chadam.pl/tracker/"
+ADD_YOUR_PEER = "https://chadam.pl/tracker/public.php"
 """
+
+logging.basicConfig(
+    level="INFO",
+    format='%(message)s',
+)
+logger = logging.getLogger(__name__)
 
 
 # Return byte-like objects from hex values
@@ -42,7 +46,6 @@ def to_hex(data):
         return data.to_string().hex()
     # Else (Signature)
     return data.hex()
-
 
 
 class MyTCPServer(socketserver.TCPServer):
@@ -138,16 +141,16 @@ class TCPHandler(socketserver.BaseRequestHandler):
 
 def read_message(s):
     message = b''
-    # Our protocol is: first 4 bytes signify message length
+    # first 4 bytes signify message length
     raw_message_length = s.recv(4) or b"\x00"
     message_length = int.from_bytes(raw_message_length, 'big')
-    
     while message_length > 0:
         chunk = s.recv(1024)
         message += chunk
         message_length -= len(chunk)
         if len(chunk) == 0: break
     return deserialize(message)
+
 
 def prepare_data(command, data):
     message = {
@@ -168,11 +171,6 @@ def send_message(address, command, data, response=False):
         if response:
             return read_message(s)
 
-logging.basicConfig(
-    level="INFO",
-    format='%(message)s',
-)
-logger = logging.getLogger(__name__)
 
 # Generates (privkey, pubkey) pair
 # Returns a tuple
@@ -182,7 +180,7 @@ def create_keypair(generator):
     private_key = SigningKey.from_secret_exponent(secexp, curve=SECP256k1)
     public_key = private_key.get_verifying_key()
     return ( to_hex(private_key), to_hex(public_key) )
-    #return (private_key.to_string().hex(), public_key.to_string().hex())
+
 
 # Return shorter version of the key
 def short_key(key):
@@ -195,18 +193,22 @@ def short_key(key):
 def serialize(data):
     return pickle.dumps(data)
 
+
 def deserialize(serialized):
     return pickle.loads(serialized)
+
 
 def to_disk(data, filename):
     serialized = serialize(data)
     with open(filename, "wb") as f:
         f.write(serialized)
 
+
 def from_disk(filename):
     with open(filename, "rb") as f:
         serialized = f.read()
         return deserialize(serialized)
+
 
 ##########################################
 #   Vote class                           #
@@ -249,6 +251,7 @@ class Vote:
         output += '=======================\n'
         return output
 
+
 # Prepare a sending commitment
 # i.e. tick the box on your voting ticket but dont put it in the ballot box yet
 def transfer_message(previous_signature, next_owner_public_key):
@@ -257,6 +260,7 @@ def transfer_message(previous_signature, next_owner_public_key):
             "next_owner_public_key": next_owner_public_key
     }
     return serialize(message)
+
 
 ##########################################
 #   Transfer class                       #
@@ -269,6 +273,7 @@ class Transfer:
     def __eq__(self, other):
         return self.signature == other.signature and \
                 self.public_key == other.public_key
+
 
 #########################################
 #   Committee class                      #
@@ -293,7 +298,6 @@ class Committee:
                 self.pending_peers.append(peer)
             except:
                 logger.info(f'(handshake) Node {peer[0]} offline')
-
 
     # Return an array of votes
     # Owner of the public key is the owner of these votes
@@ -718,6 +722,9 @@ class Block:
         signature = to_hex( privkey_from_hex(private_key).sign(self.message) )
         self.signature = signature
 
+
+# Send the sync message to the public nodes every 5 seconds
+# A hacky way if you dont want to mess with firewalls and NATs
 def send_sync():
     global committee
     address = ('192.168.0.21', 10000)
@@ -729,12 +736,16 @@ def send_sync():
             committee.handle_block(missing_block)
         time.sleep(5)
 
+
+# Run the software with GUI as a private node
 def case_voter():
     print("=" * 20)
     # Generate my private key
     keypair = create_keypair(input("Input your email address: "))
     print("Your private key:\t {}".format(short_key(keypair[0])))
     print("Your public key:\t {}".format(short_key(keypair[1])))
+
+    #TODO get the IPs of other nodes using tracker
     address = ('192.168.0.21', 10000)
 
     global committee
@@ -811,6 +822,8 @@ def serve():
     server = socketserver.TCPServer(("0.0.0.0", PORT), TCPHandler)
     server.serve_forever()
 
+
+# Run the software as a public node in terminal
 def case_committee():
     global committee
     """
