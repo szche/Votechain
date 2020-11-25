@@ -54,7 +54,6 @@ class MyTCPServer(socketserver.TCPServer):
 class TCPHandler(socketserver.BaseRequestHandler):
 
     def respond(self, command, data):
-        logger.info("Sending response: {}".format(command))
         response = prepare_data(command, data)
         self.request.sendall(response)
 
@@ -66,33 +65,7 @@ class TCPHandler(socketserver.BaseRequestHandler):
         peer = self.client_address
         logger.info(f"Got a {command} from {peer}")
 
-        #TODO use auth for block propagation and peer sharing
-        """
-        SKIP THE AUTH FOR NOW
-        # Handshake / Auth
-        if command == "connect":
-            if peer not in committee.pending_peers and peer not in committee.peers:
-                committee.pending_peers.append(peer)
-                logger.info(f'(handshake) Accepted "connect" request from "{peer[0]}"')
-                send_message(peer, "connect-response", None)
-
-        elif command == "connect-response":
-            if peer in committee.pending_peers and peer not in committee.peers:
-                committee.pending_peers.remove(peer)
-                committee.peers.append(peer)
-                logger.info(f'(handshake) Connected to "{peer[0]}"')
-                send_message(peer, "connect-response", None)
-
-                # Ask for peers
-                send_message(peer, "peers", None)
-
-        else:
-            assert peer in committee.peers, f"Rejecting {command} from unconnected {peer[0]}"
-        """
-
-        # Business logic
-
-        #Share your peers
+        #Share your public peers
         if command == "peers":
             send_message(peer, "peers-response", committee.peers)
         elif command == "peers-response":
@@ -111,32 +84,14 @@ class TCPHandler(socketserver.BaseRequestHandler):
         elif command == "block":
             try:
                 committee.handle_block(data)
-        #User asks for his balance
-        elif command == "balance":
-            try:
-                balance = committee.fetch_balance(data)
-                self.respond("balance-response", balance)
             except:
-                self.respond("balance-response", "error")
-
+                logger.info("Something went wrong during handling new block")
         #User sends his vote
         elif command == "send-vote":
             try: 
                 committee.handle_vote(data)
-        #User asks for specific block
-        elif command == "fetch-block":
-            try:
-                block = committee.fetch_block(data)
-                self.respond("fetch-block-response", block) 
             except:
-                self.respond("balance-response", "error")
-        #User asks for specific vote
-        elif command == "fetch-vote":
-            try:
-                vote = committee.fetch_vote(data)
-                self.respond("fetch-vote-response", block) 
-            except:
-                self.respond("fetch-vote-response", "error")
+                logger.info("Something went wrong during handling new transaction")
 
 
 def read_message(s):
@@ -407,7 +362,7 @@ class Committee:
     # Wont work for any other node
     def schedule_next_block(self):
         if self.public_key == self.next_committee_turn:
-            logger.info(f"MY TURN NOW!")
+            #logger.info(f"MY TURN NOW!")
             threading.Timer(10, self.submit_block, []).start()
             
 
@@ -734,7 +689,7 @@ def send_sync():
         for missing_block in blocks_sync["data"]:
             signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
             committee.handle_block(missing_block)
-        time.sleep(5)
+        time.sleep(10)
 
 
 # Run the software with GUI as a private node
@@ -750,14 +705,13 @@ def case_voter():
 
     global committee
 
-    my_ip = "192.168.0.101"
+    # my_ip field not used with a node behind nat (private node)
+    my_ip = "0.0.0.0"
     committee = Committee(keypair[0], keypair[1], (my_ip, PORT))
     
     syncing_thread = threading.Thread(target=send_sync)
     syncing_thread.daemon = True
     syncing_thread.start()
-
-    #send_sync(address)
 
     while True:
         print("=" * 20)
@@ -805,13 +759,15 @@ def case_voter():
         #Fetch block
         elif option == 4:
             blockNR = int(input("What's the block nr: "))
-            block = send_message(address, "fetch-block", blockNR, True)
-            print(block["data"])
+            #block = send_message(address, "fetch-block", blockNR, True)
+            block = committee.fetch_block(blockNR)
+            print(block)
         #Fetch vote
         elif option == 5:
             voteID = input("What's the vote id: ")
-            vote = send_message(address, "fetch-vote", voteID, True)
-            print(vote["data"])
+            #vote = send_message(address, "fetch-vote", voteID, True)
+            vote = committee.fetch_vote(voteID)
+            print(vote)
         else:
             print("Invalid option")
             continue
@@ -826,11 +782,12 @@ def serve():
 # Run the software as a public node in terminal
 def case_committee():
     global committee
+
+    #TODO Get my IP address so I can communicate with other public nodes 
     """
     my_ip = requests.get(MY_IP_LINK).text
     logger.info(f"My IP is {my_ip}")
     """
-
     my_ip = "192.168.0.31"
     generator = input("Input your generator: ")
     keypair = create_keypair(generator)
