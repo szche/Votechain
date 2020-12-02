@@ -221,6 +221,7 @@ def transfer_message(previous_signature, next_owner_public_key):
             "next_owner_public_key": next_owner_public_key
     }
     logger.info(message)
+    return bytes(previous_signature+next_owner_public_key, encoding="utf-8")
     return serialize(message)
 
 
