@@ -294,7 +294,11 @@ class Committee:
 
         previous_transfer = issue_transfer
         for next_transfer in vote.transfers[1::]:
+            logger.info("Inside for")
             message = transfer_message(previous_transfer.signature, next_transfer.public_key)
+            logger.info(f"Previous transfer signature: {previous_transfer.signature}")
+            logger.info(f"Reciepent public key: {next_transfer.public_key}")
+            logger.info(f"Issuer public key: {previous_transfer.public_key}")
             assert pubkey_from_hex(previous_transfer.public_key).verify(sig_from_hex(next_transfer.signature), message)
             previous_transfer = next_transfer
 
