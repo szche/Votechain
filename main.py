@@ -281,7 +281,7 @@ class Committee:
         return self.blocks[nr-1]
 
     def validate_vote(self, vote):
-        logger.info(f"Validating vote {vote)")
+        logger.info(f"Validating vote {vote}")
         # Check if all the previous transfers are valid
         issue_transfer = vote.transfers[0] # Must be in the genesis block to be valid
         # Assert that the issue transfer is in the genesis block
@@ -394,6 +394,9 @@ class Committee:
         #If this ID is already in the mempool, dont do anything
         if vote.id in mempool_ids: return
         self.validate_vote(vote)
+
+        if vote == self.votes[vote.id]: return
+
         #assert vote.id not in mempool_ids
         #Otherwise, add it to your mempool and broadcast it
         self.mempool.append( deepcopy(vote) )
@@ -707,13 +710,10 @@ def send_sync():
     global committee
     while True:
         random_node = random.choice(committee.peers)
-        try:
-            blocks_sync = send_message((random_node, PORT), "sync", committee.blocks[-1].signature, True)
-            for missing_block in blocks_sync["data"]:
-                signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
-                committee.handle_block(missing_block)
-        except:
-            pass
+        blocks_sync = send_message((random_node, PORT), "sync", committee.blocks[-1].signature, True)
+        for missing_block in blocks_sync["data"]:
+            signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
+            committee.handle_block(missing_block)
         time.sleep(10)
 
 
@@ -798,6 +798,7 @@ def case_voter():
             send_message((random_node, PORT), "send-vote", my_vote)
         #Fetch block
         elif option == 4:
+            print("Current height: {}".format( len(committee.blocks) ))
             blockNR = int(input("What's the block nr: "))
             block = committee.fetch_block(blockNR)
             print(block)
