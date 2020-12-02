@@ -362,7 +362,7 @@ class Committee:
         # Broadcast the block
         for address in self.peers:
             logger.info(f"Sending to {address}")
-            send_message(address, "block", block)
+            send_message((address, PORT), "block", block)
 
     # For authorized "Block producers" only!
     # Wont work for any other node
@@ -384,7 +384,7 @@ class Committee:
         self.mempool.append( deepcopy(vote) )
         for address in self.peers:
             logger.info(f"Broadcasting the tx further -> {address}")
-            send_message(address, "send-vote", vote)
+            send_message((address, PORT), "send-vote", vote)
 
     # Create the genesis block
     # Genesis block comes pre-loaded with the software
