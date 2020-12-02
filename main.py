@@ -289,11 +289,15 @@ class Committee:
                 break
         assert inGenesis == True
 
+        logger.info("Past checks 1")
+
         previous_transfer = issue_transfer
         for next_transfer in vote.transfers[1::]:
             message = transfer_message(previous_transfer.signature, next_transfer.public_key)
             assert pubkey_from_hex(previous_transfer.public_key).verify(sig_from_hex(next_transfer.signature), message)
             previous_transfer = next_transfer
+
+        logger.info("Vote is valid!")
         
     # Update the cached vote 
     # Cached vote is the most recent version of this vote
