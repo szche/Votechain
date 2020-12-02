@@ -311,7 +311,7 @@ class Committee:
         return turns[blocks % len(turns)]
 
     # When seeing a new block
-    def handle_block(self, block):
+    def handle_block(self, block, schedule=True):
         logger.info("Handling new block: {}".format(block.signature))
         #Verify committee signature (Skip the genesis block)
         if len(self.blocks) > 1:
@@ -336,7 +336,8 @@ class Committee:
         self.blocks.append(block)
 
         #Schedule next block
-        self.schedule_next_block()
+        if schedule == True:
+            self.schedule_next_block()
 
         #Save the accepted block
         self.save_block()
@@ -832,7 +833,7 @@ def case_committee():
         try:
             blocks_sync = send_message((peer, PORT), "sync", committee.blocks[-1].signature, True)
             for missing_block in blocks_sync["data"]:
-                committee.handle_block(missing_block)
+                committee.handle_block(missing_block, schedule=False)
         except:
             pass
 
