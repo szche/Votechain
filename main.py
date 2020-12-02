@@ -601,7 +601,7 @@ class Committee:
                 }
         block.committees = {
                 "Krakow": "49e642a989a2c7352373e23d624ca1a1794f865c0a331790e67261427f0f226ab9495c09d76d3c7cb6486c291ceef0109b0eeea89ecdaf14f10dba1098a587d9",
-                #"Warszawa": "9f229d18ba0386d1bbf9c5b8298c3ae05dfc85ca24b42e72c48a341c9792e52faa3797e468bcbb873f5123e88d4e7ac824732473f99fa9eb0d576df54574c420",
+                "Warszawa": "9f229d18ba0386d1bbf9c5b8298c3ae05dfc85ca24b42e72c48a341c9792e52faa3797e468bcbb873f5123e88d4e7ac824732473f99fa9eb0d576df54574c420",
                 }
         for vote in block.votes:
             self.votes[vote.id] = deepcopy(vote)
