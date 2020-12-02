@@ -216,15 +216,18 @@ class Vote:
 # Prepare a sending commitment
 # i.e. tick the box on your voting ticket but dont put it in the ballot box yet
 def transfer_message(previous_signature, next_owner_public_key):
+    """
+    It turns out that pickle is not cross compatible so the bytes() function must do instead
     message = {
             "previous_signature": previous_signature,
             "next_owner_public_key": next_owner_public_key
     }
     logger.info(message)
+    return serialize(message)
+    """
     if previous_signature is None:
         previous_signature = ""
     return bytes(previous_signature+next_owner_public_key, encoding="utf-8")
-    return serialize(message)
 
 
 ##########################################
@@ -278,7 +281,7 @@ class Committee:
         return self.blocks[nr-1]
 
     def validate_vote(self, vote):
-        logger.info(vote)
+        logger.info(f"Validating vote {vote)")
         # Check if all the previous transfers are valid
         issue_transfer = vote.transfers[0] # Must be in the genesis block to be valid
         # Assert that the issue transfer is in the genesis block
@@ -291,20 +294,18 @@ class Committee:
                 break
         assert inGenesis == True
 
-        logger.info("Past checks 1")
 
         previous_transfer = issue_transfer
         for next_transfer in vote.transfers[1::]:
-            logger.info("Inside for")
             message = transfer_message(previous_transfer.signature, next_transfer.public_key)
-            logger.info(f"Previous transfer signature: {previous_transfer.signature}")
-            logger.info(f"Reciepent public key: {next_transfer.public_key}")
-            logger.info(f"Issuer public key: {previous_transfer.public_key}")
-            logger.info(f"{pubkey_from_hex(previous_transfer.public_key)}, {sig_from_hex(next_transfer.signature)}, {message}")
+            #logger.info(f"Previous transfer signature: {previous_transfer.signature}")
+            #logger.info(f"Reciepent public key: {next_transfer.public_key}")
+            #logger.info(f"Issuer public key: {previous_transfer.public_key}")
+            #logger.info(f"{pubkey_from_hex(previous_transfer.public_key)}, {sig_from_hex(next_transfer.signature)}, {message}")
             assert pubkey_from_hex(previous_transfer.public_key).verify(sig_from_hex(next_transfer.signature), message)
             previous_transfer = next_transfer
+        logger.info("Vote passed the for")
 
-        logger.info("Vote is valid!")
         
     # Update the cached vote 
     # Cached vote is the most recent version of this vote
@@ -383,7 +384,7 @@ class Committee:
     # Wont work for any other node
     def schedule_next_block(self):
         if self.public_key == self.next_committee_turn:
-            logger.info(f"MY TURN NOW!")
+            logger.info(f"My turn to create block now!")
             threading.Timer(10, self.submit_block, []).start()
             
 
@@ -392,13 +393,11 @@ class Committee:
         mempool_ids = [vote.id for vote in self.mempool]
         #If this ID is already in the mempool, dont do anything
         if vote.id in mempool_ids: return
-        logger.info("Pre vote validation")
         self.validate_vote(vote)
-        logger.info("Vote validated")
         #assert vote.id not in mempool_ids
         #Otherwise, add it to your mempool and broadcast it
         self.mempool.append( deepcopy(vote) )
-        logger.info("Vote appended to the mempool")
+        logger.info("Vote added to th mempool")
         for address in self.peers:
             logger.info(f"Broadcasting the tx further -> {address}")
             send_message((address, PORT), "send-vote", vote)
