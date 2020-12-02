@@ -277,6 +277,7 @@ class Committee:
         return self.blocks[nr-1]
 
     def validate_vote(self, vote):
+        logger.info(vote)
         # Check if all the previous transfers are valid
         issue_transfer = vote.transfers[0] # Must be in the genesis block to be valid
         # Assert that the issue transfer is in the genesis block
@@ -787,6 +788,7 @@ def case_voter():
             my_vote = my_balance[0]
             my_vote.sign_transfer(keypair[0], pubkey)
             print(my_vote)
+            committee.validate_vote(my_vote)
             random_node = random.choice(committee.peers)
             send_message((random_node, PORT), "send-vote", my_vote)
         #Fetch block
