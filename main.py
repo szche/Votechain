@@ -312,7 +312,7 @@ class Committee:
 
     # When seeing a new block
     def handle_block(self, block):
-        #print("Handling new block: {}".format(block.signature))
+        logger.info("Handling new block: {}".format(block.signature))
         #Verify committee signature (Skip the genesis block)
         if len(self.blocks) > 1:
             public_key = self.next_committee_turn
@@ -340,7 +340,7 @@ class Committee:
 
         #Save the accepted block
         self.save_block()
-        #logger.info(f"Block accepted, height: {len(self.blocks)}")
+        logger.info(f"Block accepted, height: {len(self.blocks)}")
 
     def create_block(self):
         votes = deepcopy(self.mempool)
@@ -368,7 +368,7 @@ class Committee:
     # Wont work for any other node
     def schedule_next_block(self):
         if self.public_key == self.next_committee_turn:
-            #logger.info(f"MY TURN NOW!")
+            logger.info(f"MY TURN NOW!")
             threading.Timer(10, self.submit_block, []).start()
             
 
