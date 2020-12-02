@@ -11,12 +11,15 @@ committee = None
 PORT = 10000
 
 #TODO fetch the peers from tracker
-"""
-GET THE PEERS LIST FROM  IT LATER
+# Get request returns your public IP address
 MY_IP_LINK = "https://chadam.pl/tracker/ip.php"
+
+# Get request returns the list of public nodes
 PEERS_LIST = "https://chadam.pl/tracker/"
+
+# Visit this link to be added to the tracker list as a public node
 ADD_YOUR_PEER = "https://chadam.pl/tracker/public.php"
-"""
+
 
 logging.basicConfig(
     level="INFO",
@@ -65,13 +68,9 @@ class TCPHandler(socketserver.BaseRequestHandler):
         peer = self.client_address
         logger.info(f"Got a {command} from {peer}")
 
-        #Share your public peers
-        if command == "peers":
-            send_message(peer, "peers-response", committee.peers)
-        elif command == "peers-response":
-            for peer in data:
-                committee.connect(peer)
-
+        # Syncing new nodes
+        # Receiving data    ->  Signature of the last user's known block
+        # Response data     ->  Every block following that signature
         elif command == "sync":
             try:
                 blocks = committee.sync_request(data)
@@ -80,13 +79,16 @@ class TCPHandler(socketserver.BaseRequestHandler):
             except:
                 self.respond("sync-response", "error")
 
-        #When discovering new block 
+        # Receive a newly minted block and handle it
+        # Receiving data    ->  New block
         elif command == "block":
             try:
                 committee.handle_block(data)
             except:
                 logger.info("Something went wrong during handling new block")
-        #User sends his vote
+        
+        # Receive a newly signed vote and add it to the blockchain 
+        # Receiving data    ->  Vote
         elif command == "send-vote":
             try: 
                 committee.handle_vote(data)
@@ -242,17 +244,8 @@ class Committee:
         self.mempool = []   # Votes waiting to be included in the block
         self.genesis_block()    # On node start-up, get the contests of the genesis block
         self.peers = []  
-        self.pending_peers = []
         self.address = address
 
-    def connect(self, peer):
-        if peer not in self.peers and peer != self.address:
-            logger.info(f'(handshake) Sent "connect" to {peer[0]}')
-            try:
-                send_message(peer, "connect", None)
-                self.pending_peers.append(peer)
-            except:
-                logger.info(f'(handshake) Node {peer[0]} offline')
 
     # Return an array of votes
     # Owner of the public key is the owner of these votes
@@ -682,15 +675,29 @@ class Block:
 # A hacky way if you dont want to mess with firewalls and NATs
 def send_sync():
     global committee
-    address = ('192.168.0.21', 10000)
     while True:
         #logger.info("Sending sync request")
-        blocks_sync = send_message(address, "sync", committee.blocks[-1].signature, True)
+        blocks_sync = send_message(committee.peers[0], "sync", committee.blocks[-1].signature, True)
         for missing_block in blocks_sync["data"]:
             signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
             committee.handle_block(missing_block)
         time.sleep(10)
 
+
+def get_my_ip():
+    my_ip = requests.get(MY_IP_LINK).text
+    logger.info(f"My IP is {my_ip}")
+    return my_ip
+
+# Get the public peers list and filter it
+def get_public_peers():
+    my_ip = get_my_ip() 
+    peers_request = requests.get(PEERS_LIST).text
+    peers = []
+    for ip in peers_request.split(";"):
+        if ip != "" and ip != my_ip:
+            peers.append(ip)
+    return peers
 
 # Run the software with GUI as a private node
 def case_voter():
@@ -700,14 +707,15 @@ def case_voter():
     print("Your private key:\t {}".format(short_key(keypair[0])))
     print("Your public key:\t {}".format(short_key(keypair[1])))
 
-    #TODO get the IPs of other nodes using tracker
-    address = ('192.168.0.21', 10000)
+    address = (get_my_ip(), PORT)
+
+    peers = get_public_peers()
+    logger.info(f"Found {len(peers)} peers: {peers}")
 
     global committee
 
-    # my_ip field not used with a node behind nat (private node)
-    my_ip = "0.0.0.0"
-    committee = Committee(keypair[0], keypair[1], (my_ip, PORT))
+    committee = Committee(keypair[0], keypair[1], address)
+    committee.peers = peers
     
     syncing_thread = threading.Thread(target=send_sync)
     syncing_thread.daemon = True
@@ -732,7 +740,6 @@ def case_voter():
         #Check your balance
         if option == 1:
             balance = committee.fetch_balance( keypair[1]  )
-            #balance = send_message(address, "balance", keypair[1], True)
             print("Your balance is: {}".format(len(balance)))
             for vote in balance:
                 print(vote)
@@ -740,7 +747,6 @@ def case_voter():
         elif option == 2:
             pubkey = input("Input the public key: ")
             balance = committee.fetch_balance(pubkey)
-            #balance = send_message(address, "balance", pubkey, True)
             print("His balance is: {}".format(len(balance)))
             for vote in balance:
                 print(vote)
@@ -748,24 +754,21 @@ def case_voter():
         elif option == 3:
             pubkey = create_keypair(input("Input the public key: "))[1]
             my_balance = committee.fetch_balance( keypair[1]  )
-            #my_balance = send_message(address, "balance", keypair[1], True)
             if len(my_balance) == 0:
                 print("You do not have enough votes!")
                 continue
             my_vote = my_balance[0]
             my_vote.sign_transfer(keypair[0], pubkey)
             print(my_vote)
-            send_message(address, "send-vote", my_vote)
+            send_message(committee.peers[0], "send-vote", my_vote)
         #Fetch block
         elif option == 4:
             blockNR = int(input("What's the block nr: "))
-            #block = send_message(address, "fetch-block", blockNR, True)
             block = committee.fetch_block(blockNR)
             print(block)
         #Fetch vote
         elif option == 5:
             voteID = input("What's the vote id: ")
-            #vote = send_message(address, "fetch-vote", voteID, True)
             vote = committee.fetch_vote(voteID)
             print(vote)
         else:
@@ -783,30 +786,38 @@ def serve():
 def case_committee():
     global committee
 
-    #TODO Get my IP address so I can communicate with other public nodes 
-    """
-    my_ip = requests.get(MY_IP_LINK).text
-    logger.info(f"My IP is {my_ip}")
-    """
-    my_ip = "192.168.0.31"
+    my_ip = get_my_ip() 
+
     generator = input("Input your generator: ")
     keypair = create_keypair(generator)
     committee = Committee(keypair[0], keypair[1], (my_ip, PORT))
     logger.info(f"Started as -> {short_key(keypair[1])}")
 
+    # Add your ip to the peers-list
+    requests.get(ADD_YOUR_PEER)
+
+    peers = get_public_peers()
+    logger.info(f"Found {len(peers)} peers: {peers}")
+
+    #Connect to other peers
+    logger.info("Found peers: ({})".format( peers ))
+    committee.peers = peers
+    
+    # Perform an initial sync upon node startup
+    for peer in committee.peers: 
+        try:
+            blocks_sync = send_message(committee.peers[0], "sync", committee.blocks[-1].signature, True)
+            for missing_block in blocks_sync["data"]:
+                committee.handle_block(missing_block)
+        except:
+            logger.info(f"Node is unresponsive, skipping")
+            
+    # Finally, after the node is synced and ready, start producing blocks yourself and serving requests
     committee.schedule_next_block()
 
     # Start server thread
     server_thread = threading.Thread(target=serve, name="server")
     server_thread.start()
-
-    """
-    #Connect to other peers
-    peers = [ ("192.168.0.21", 10000) ]
-    logger.info("Found peers: ({})".format( peers ))
-    for peer in peers:
-        committee.connect(peer)
-    """
 
 
 if __name__ == "__main__":
