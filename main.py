@@ -362,7 +362,10 @@ class Committee:
         # Broadcast the block
         for address in self.peers:
             logger.info(f"Sending to {address}")
-            send_message((address, PORT), "block", block)
+            try:
+                send_message((address, PORT), "block", block)
+            except:
+                pass
 
     # For authorized "Block producers" only!
     # Wont work for any other node
