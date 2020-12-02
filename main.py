@@ -1,4 +1,4 @@
-import sys, logging, pickle, time, threading, socketserver, socket, re, requests, os
+import sys, logging, pickle, time, threading, socketserver, socket, re, requests, os, random
 from copy import deepcopy
 from uuid import uuid4
 from datetime import datetime
@@ -10,7 +10,6 @@ committee = None
 
 PORT = 10000
 
-#TODO fetch the peers from tracker
 # Get request returns your public IP address
 MY_IP_LINK = "https://chadam.pl/tracker/ip.php"
 
@@ -71,7 +70,7 @@ class TCPHandler(socketserver.BaseRequestHandler):
         # Syncing new nodes
         # Receiving data    ->  Signature of the last user's known block
         # Response data     ->  Every block following that signature
-        elif command == "sync":
+        if command == "sync":
             try:
                 blocks = committee.sync_request(data)
                 logger.info(f'Served "sync" request with { len(blocks) } blocks')
@@ -676,11 +675,15 @@ class Block:
 def send_sync():
     global committee
     while True:
-        #logger.info("Sending sync request")
-        blocks_sync = send_message(committee.peers[0], "sync", committee.blocks[-1].signature, True)
-        for missing_block in blocks_sync["data"]:
-            signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
-            committee.handle_block(missing_block)
+        random_node = random.choice(committee.peers)
+        logger.info(f"Sending sync request to {random_node}")
+        try:
+            blocks_sync = send_message((random_node, PORT), "sync", committee.blocks[-1].signature, True)
+            for missing_block in blocks_sync["data"]:
+                signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
+                committee.handle_block(missing_block)
+        except:
+            logger.info("Node is unresponsive")
         time.sleep(10)
 
 
@@ -760,7 +763,8 @@ def case_voter():
             my_vote = my_balance[0]
             my_vote.sign_transfer(keypair[0], pubkey)
             print(my_vote)
-            send_message(committee.peers[0], "send-vote", my_vote)
+            random_node = random.choice(committee.peers)
+            send_message((random_node, PORT), "send-vote", my_vote)
         #Fetch block
         elif option == 4:
             blockNR = int(input("What's the block nr: "))
