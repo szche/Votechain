@@ -97,10 +97,7 @@ class TCPHandler(socketserver.BaseRequestHandler):
         # Receive a newly signed vote and add it to the blockchain 
         # Receiving data    ->  Vote
         elif command == "send-vote":
-            try: 
-                committee.handle_vote(data)
-            except:
-                pass
+            committee.handle_vote(data)
 
 
 def read_message(s):
@@ -223,6 +220,7 @@ def transfer_message(previous_signature, next_owner_public_key):
             "previous_signature": previous_signature,
             "next_owner_public_key": next_owner_public_key
     }
+    logger.info(message)
     return serialize(message)
 
 
@@ -299,6 +297,7 @@ class Committee:
             logger.info(f"Previous transfer signature: {previous_transfer.signature}")
             logger.info(f"Reciepent public key: {next_transfer.public_key}")
             logger.info(f"Issuer public key: {previous_transfer.public_key}")
+            logger.info(f"{pubkey_from_hex(previous_transfer.public_key)}, {sig_from_hex(next_transfer.signature)}, {message}")
             assert pubkey_from_hex(previous_transfer.public_key).verify(sig_from_hex(next_transfer.signature), message)
             previous_transfer = next_transfer
 
