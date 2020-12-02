@@ -67,6 +67,14 @@ class TCPHandler(socketserver.BaseRequestHandler):
         peer = self.client_address
         logger.info(f"Got a {command} from {peer}")
 
+        if command == "peers":
+            try:
+                self.respond("peers-response", committee.peers)
+                possible_peers = data + [peer]
+                committee.new_peers(possible_peers)
+            except:
+                logger.info("Cant send my peers to this peer")
+
         # Syncing new nodes
         # Receiving data    ->  Signature of the last user's known block
         # Response data     ->  Every block following that signature
@@ -244,6 +252,12 @@ class Committee:
         self.genesis_block()    # On node start-up, get the contests of the genesis block
         self.peers = []  
         self.address = address
+
+    def new_peers(data):
+        for peer in data:
+            if peer not in self.peers and peer != self.address:
+                self.peers.append(peer)
+
 
 
     # Return an array of votes
@@ -809,10 +823,18 @@ def case_committee():
     
     # Perform an initial sync upon node startup
     for peer in committee.peers: 
+        # Ask for new blocks
         try:
-            blocks_sync = send_message(committee.peers[0], "sync", committee.blocks[-1].signature, True)
+            blocks_sync = send_message((peer, PORT), "sync", committee.blocks[-1].signature, True)
             for missing_block in blocks_sync["data"]:
                 committee.handle_block(missing_block)
+        except:
+            logger.info(f"Node is unresponsive, skipping")
+
+        # Ask for other peers
+        try:
+            other_peers = send_message((peer, PORT), "peers", committee.peers, True)
+            committee.new_peers(other_peers["data"])
         except:
             logger.info(f"Node is unresponsive, skipping")
             
