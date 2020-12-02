@@ -73,7 +73,7 @@ class TCPHandler(socketserver.BaseRequestHandler):
                 possible_peers = data + [peer]
                 committee.new_peers(possible_peers)
             except:
-                logger.info("Cant send my peers to this peer")
+                pass
 
         # Syncing new nodes
         # Receiving data    ->  Signature of the last user's known block
@@ -100,7 +100,7 @@ class TCPHandler(socketserver.BaseRequestHandler):
             try: 
                 committee.handle_vote(data)
             except:
-                logger.info("Something went wrong during handling new transaction")
+                pass
 
 
 def read_message(s):
@@ -377,14 +377,17 @@ class Committee:
         mempool_ids = [vote.id for vote in self.mempool]
         #If this ID is already in the mempool, dont do anything
         if vote.id in mempool_ids: return
+        logger.info("Pre vote validation")
         self.validate_vote(vote)
         logger.info("Vote validated")
         #assert vote.id not in mempool_ids
         #Otherwise, add it to your mempool and broadcast it
         self.mempool.append( deepcopy(vote) )
+        logger.info("Vote appended to the mempool")
         for address in self.peers:
             logger.info(f"Broadcasting the tx further -> {address}")
             send_message((address, PORT), "send-vote", vote)
+            logger.info(f"Vote sent to {address}")
 
     # Create the genesis block
     # Genesis block comes pre-loaded with the software
@@ -690,14 +693,13 @@ def send_sync():
     global committee
     while True:
         random_node = random.choice(committee.peers)
-        logger.info(f"Sending sync request to {random_node}")
         try:
             blocks_sync = send_message((random_node, PORT), "sync", committee.blocks[-1].signature, True)
             for missing_block in blocks_sync["data"]:
                 signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
                 committee.handle_block(missing_block)
         except:
-            logger.info("Node is unresponsive")
+            pass
         time.sleep(10)
 
 
@@ -829,14 +831,14 @@ def case_committee():
             for missing_block in blocks_sync["data"]:
                 committee.handle_block(missing_block)
         except:
-            logger.info(f"Node is unresponsive, skipping")
+            pass
 
         # Ask for other peers
         try:
             other_peers = send_message((peer, PORT), "peers", committee.peers, True)
             committee.new_peers(other_peers["data"])
         except:
-            logger.info(f"Node is unresponsive, skipping")
+            pass
             
     # Finally, after the node is synced and ready, start producing blocks yourself and serving requests
     committee.schedule_next_block()
