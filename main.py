@@ -6,6 +6,7 @@ from ecdsa import SigningKey, VerifyingKey, SECP256k1
 from ecdsa.keys import BadSignatureError
 from ecdsa.util import randrange_from_seed__trytryagain
 
+
 committee = None
 
 PORT = 10000
@@ -152,7 +153,7 @@ def short_key(key):
 #   Serialization and writing to disk    #
 ##########################################
 def serialize(data):
-    return pickle.dumps(data)
+    return pickle.dumps(data, protocol=0)
 
 
 def deserialize(serialized):
@@ -216,8 +217,6 @@ class Vote:
 # Prepare a sending commitment
 # i.e. tick the box on your voting ticket but dont put it in the ballot box yet
 def transfer_message(previous_signature, next_owner_public_key):
-    """
-    It turns out that pickle is not cross compatible so the bytes() function must do instead
     message = {
             "previous_signature": previous_signature,
             "next_owner_public_key": next_owner_public_key
@@ -228,6 +227,7 @@ def transfer_message(previous_signature, next_owner_public_key):
     if previous_signature is None:
         previous_signature = ""
     return bytes(previous_signature+next_owner_public_key, encoding="utf-8")
+    """
 
 
 ##########################################
