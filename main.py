@@ -221,7 +221,6 @@ def transfer_message(previous_signature, next_owner_public_key):
             "previous_signature": previous_signature,
             "next_owner_public_key": next_owner_public_key
     }
-    logger.info(message)
     return serialize(message)
     """
     if previous_signature is None:
@@ -281,7 +280,6 @@ class Committee:
         return self.blocks[nr-1]
 
     def validate_vote(self, vote):
-        logger.info(f"Validating vote {vote}")
         # Check if all the previous transfers are valid
         issue_transfer = vote.transfers[0] # Must be in the genesis block to be valid
         # Assert that the issue transfer is in the genesis block
@@ -304,7 +302,6 @@ class Committee:
             #logger.info(f"{pubkey_from_hex(previous_transfer.public_key)}, {sig_from_hex(next_transfer.signature)}, {message}")
             assert pubkey_from_hex(previous_transfer.public_key).verify(sig_from_hex(next_transfer.signature), message)
             previous_transfer = next_transfer
-        logger.info("Vote passed the for")
 
         
     # Update the cached vote 
@@ -324,7 +321,7 @@ class Committee:
 
     # When seeing a new block
     def handle_block(self, block, schedule=True):
-        logger.info("Handling new block: {}".format(block.signature))
+        logger.info("Handling new block: {}".format(short_key(block.signature)))
         #Verify committee signature (Skip the genesis block)
         if len(self.blocks) > 1:
             public_key = self.next_committee_turn
@@ -369,7 +366,7 @@ class Committee:
     def submit_block(self):
         # Create the block
         block = self.create_block()
-        print(f"Creating the block: {block.signature}")
+        print(f"Creating the block: {short_key(block.signature)}")
         # Validate it and save it locally
         self.handle_block(block)
         # Broadcast the block
