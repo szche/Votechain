@@ -9,5 +9,3 @@ Blocks are produced in a "round-robin" fashion by the block producers. The pproc
 
 ### TODO
  - Enhance privacy
- - Add GUI
-
