@@ -18,15 +18,6 @@ from utils import logger, serialize, deserialize, to_disk, from_disk, \
 committee = None
 PORT = 10000
 
-# Get request returns your public IP address
-MY_IP_LINK = "https://chadam.pl/tracker/ip.php"
-
-# Get request returns the list of public nodes
-PEERS_LIST = "https://chadam.pl/tracker/"
-
-# Visit this link to be added to the tracker list as a public node
-ADD_YOUR_PEER = "https://chadam.pl/tracker/public.php"
-
 SecondPage = None
 EntryTextStartingPage = None
 PoleAdresNapis = None
@@ -37,7 +28,6 @@ textSzaraStrefa = None
 # funkcja ktora wyrzuca frame'a ktorego bysmy chcieli
 def raise_frame(frame):
 	frame.tkraise()
-
 
 def generate_committee():
     """
