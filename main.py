@@ -1,14 +1,21 @@
-import sys, logging, pickle, time, threading, socketserver, socket, re, requests, os, random
+import sys, time, threading, socketserver, socket, os, random
 from copy import deepcopy
 from uuid import uuid4
 from datetime import datetime
 from ecdsa import SigningKey, VerifyingKey, SECP256k1
 from ecdsa.keys import BadSignatureError
 from ecdsa.util import randrange_from_seed__trytryagain
+import tkinter as tk
+import tkinter.font as tkFont
+import tkinter.ttk as ttk
+from functools import partial
+from utils import logger, serialize, deserialize, to_disk, from_disk, \
+                get_my_ip, get_public_peers
 
 
+#TODO read previous blocks from data/ folder upon start-up
+#   There's no need to re-sync with other nodes every time you start your node
 committee = None
-
 PORT = 10000
 
 # Get request returns your public IP address
@@ -20,12 +27,245 @@ PEERS_LIST = "https://chadam.pl/tracker/"
 # Visit this link to be added to the tracker list as a public node
 ADD_YOUR_PEER = "https://chadam.pl/tracker/public.php"
 
+SecondPage = None
+EntryTextStartingPage = None
+PoleAdresNapis = None
+option = None
+PoleNarzedzia = None
+textSzaraStrefa = None
 
-logging.basicConfig(
-    level="INFO",
-    format='%(message)s',
-)
-logger = logging.getLogger(__name__)
+# funkcja ktora wyrzuca frame'a ktorego bysmy chcieli
+def raise_frame(frame):
+	frame.tkraise()
+
+
+def generate_committee():
+    """
+    Collects the email address, creates the keypair for that address and 
+    createas the committee object
+    also moves to the next frame
+    """
+    global committee
+    email = EntryTextStartingPage.get()
+
+    #Create keypair
+    keypair = create_keypair(email)
+    print("Klucze: ", keypair)
+
+    #Get the public peers list from tracker
+    peers = get_public_peers()
+    print("Peers: ", peers)
+
+    #Generate commitee
+    committee = Committee( keypair[0], keypair[1], ('0.0.0.0', PORT) )
+    committee.peers = peers
+
+    #Start a syncing thread
+    syncing_thread = threading.Thread(target=send_sync)
+    syncing_thread.daemon = True
+    syncing_thread.start()
+
+    #Show second part of the GUI
+    generate_second_page()
+    raise_frame(SecondPage)
+    return EntryTextStartingPage.get()
+
+
+def onclick(name):
+    """
+    funkcje ktora zwraca napis do PoleAdresNapis
+    sekcja Dostepnie Partie
+    """
+    print("Selected party: ", name)
+    adresy = committee.blocks[0].parties
+    PoleAdresNapis.delete(0, len(PoleAdresNapis.get()) )
+    PoleAdresNapis.insert(0, committee.blocks[0].parties[name]) 
+
+
+def narzedziaClick():
+    space = '-'*25
+    radio_choice = option.get()
+    radio_input = PoleNarzedzia.get()
+    if radio_choice == "Sprawdź adres":
+        if radio_input == "":
+            saldo = committee.fetch_balance(committee.public_key)
+            radio_input = committee.public_key
+        else:
+            saldo = committee.fetch_balance(radio_input)
+        output = f'Adres: {short_key(radio_input)}\nSaldo: {len(saldo)}'
+        for vote in saldo:
+            output += f'\n{vote}'
+        print_info(output)
+        return
+    elif radio_choice == "Pobierz blok":
+        if radio_input == "":
+            print_info("Nie wpisano numeru bloku!")
+            return
+        else:
+            try:
+                blockNR = int(radio_input)
+            except:
+                print_info("Podany numer bloku jest nieprawidlowy!")
+                return
+            block = committee.fetch_block(blockNR)
+            print_info(block)
+            return
+    elif radio_choice == "Sprawdź głos":
+        if radio_input == "":
+            print_info("Nie wpisano ID głosu!")
+            return
+        else:
+            vote = committee.fetch_vote(radio_input)
+            print_info(vote)
+            return
+    elif radio_choice == "Pokaż klucze":
+        output = f'Klucz publiczny:\n{committee.public_key}\n{space}\n' + \
+                    f'Klucz prywatny:\n{committee.private_key}'
+        print_info(output)
+    else:
+        print_info("Nie zaznaczono przycisku!")
+        return
+
+
+def print_info(text):
+    """
+    funckja ze "zblokowanego' widgeta zamienia opcje state na normal co daje mozliwosc
+    dodania tekstu. Po dodaniu tekstu wracamy do state=disabled czyli zakaz edytowania
+    naszego tekstu przez interfejs uzytkownika. Innej opcji nie widze
+    """
+    global textSzaraStrefa
+    space = '-' *54 
+    textSzaraStrefa.insert('1.0', f'{space}\n{text}\n')
+
+
+def send_to():
+    global committee
+    sending_address = PoleAdresNapis.get()
+    if sending_address == "":
+        print_info("Pole z adresem jest puste!")
+        return
+    my_balance = committee.fetch_balance( committee.public_key )
+    if len(my_balance) == 0:
+        print_info('Niewystarczające saldo!')
+        return
+    my_vote = my_balance[0]
+    my_vote.sign_transfer(committee.private_key, sending_address)
+    print_info(my_vote)
+    #TODO
+    #committee.validate_vote(my_vote)
+    #random_node = random.choice(committee.peers)
+    #send_message((random_node, PORT), "send-vote", my_vote)
+
+
+def generate_second_page():
+    global SecondPage
+    global EntryTextStartingPage
+    global PoleAdresNapis
+    global option
+    global PoleNarzedzia
+    global committee
+    global textSzaraStrefa
+    # content drugiej strony
+    left_frame = tk.Frame(SecondPage, width=704, height=720, bg="white")
+    left_frame.grid(row=0, column=0)
+    right_frame = tk.Frame(SecondPage, width=290, height=690, bg="#D3D3D3")
+    right_frame.grid(row=0, column=1, padx=15, pady=15)
+
+    #left_frame
+    # napis "Dostepne Partie"
+    DostepnePartieNapis = tk.Label(left_frame, text="Dostępne partie: ",  \
+                                    anchor="nw", bg="white")
+
+    DostepnePartieNapis['font'] = tkFont.Font(family="Arial", size=20)
+    DostepnePartieNapis.place(x=50, y=30)
+
+
+    #Buttons showing available parties
+    button_coords = [50, 275, 500]
+    for counter, party in enumerate(committee.blocks[0].parties):
+        button = tk.Button(left_frame, text=party, bg="#D3D3D3", height=5, width=15, \
+                    border=0, activebackground="#959595", activeforeground="white", \
+                    command=partial(onclick, party) )
+        button['font'] = tkFont.Font(family='Arial', size=15, weight='bold')
+        button.place( x=button_coords[counter], y=80)
+        print(counter, party, committee.blocks[0].parties[party])
+
+    #adres napis
+    AdresNapis = tk.Label(left_frame, text="Adres:",bg="white")
+    AdresNapis['font'] = tkFont.Font(family="Arial", size=17, weight="bold")
+    AdresNapis.place(x=50, y=262)
+
+    # pole gdzie bedzie sie wyswietlala wartosc w zaleznosci od wcisniecia PartiePrzyciskX
+    PoleAdresNapis = tk.Entry(left_frame, bd=2,bg="white", width=55, \
+                                relief="flat", selectborderwidth=2)
+    PoleAdresNapis['font'] = tkFont.Font(family="Arial", size=13)
+    PoleAdresNapis.place(x=140, y=265)
+
+    # przycisk wyslij
+    PrzyciskWyslijAdres = tk.Button(left_frame, text="Wyślij", fg="white", \
+                            bg="black", width=10, relief="solid", height=2, \
+                            anchor="center", activebackground="white", \
+                            activeforeground="black", command=lambda: send_to())
+
+    PrzyciskWyslijAdres['font'] = tkFont.Font(family="Arial", size=12, weight="bold")
+    PrzyciskWyslijAdres.place(x=572, y=325)
+
+
+    # napis "Narzedzia"
+    NarzedziaNapis = tk.Label(left_frame, text="Narzędzia:", bg="white")
+    NarzedziaNapis['font'] = tkFont.Font(family="Arial", size=17, weight="bold")
+    NarzedziaNapis.place(x=50, y=425)
+
+
+    # radio Button narzędzia
+    option = tk.StringVar()
+    radio_buttons_text = [
+                "Sprawdź adres",
+                "Pobierz blok",
+                "Sprawdź głos",
+                "Pokaż klucze"]
+    radio_buttons_coords = [50, 215, 380, 545]
+    for counter, radio_text in enumerate(radio_buttons_text):
+        button = tk.Radiobutton(left_frame, text=radio_text, width=13, \
+                                height=3, border=0, activebackground="#959595", \
+                                activeforeground="white", selectcolor="#959595", \
+                                indicator=0, variable=option, value=radio_text)
+        button['font'] = tkFont.Font(family="Arial", size=13, weight='bold')
+        button.place(x=radio_buttons_coords[counter], y=500)
+
+    # pole 
+    PoleNarzedzia = tk.Entry(left_frame, bd=2,bg="white", width=20, \
+                            relief="flat", selectborderwidth=2)
+    PoleNarzedzia.config(highlightbackground="black")
+    PoleNarzedzia['font'] = tkFont.Font(family="Arial", size=26)
+    PoleNarzedzia.place(x=50, y=602)
+
+    #przycik wyslij w narzedzia
+    PrzyciskNarzedziaWyslij = tk.Button(left_frame, text="Wyślij", fg="white", \
+                                    bg="black", width=10, relief="solid", height=2, \
+                                    anchor="center", activebackground="white", \
+                                    activeforeground="black", command=lambda: narzedziaClick())
+
+    PrzyciskNarzedziaWyslij['font'] = tkFont.Font(family="Arial", size=12, weight="bold")
+    PrzyciskNarzedziaWyslij.place(x=450, y=600)
+
+    # szara strefa
+    ############################################################################################
+
+    textSzaraStrefa = tk.Text(right_frame, bg="#D3D3D3",yscrollcommand=1, \
+                            exportselection=1, bd=0, height=50, \
+                            selectbackground="#B1B1B1", width=34, \
+                            state="normal", highlightbackground="#D3D3D3")
+
+    textSzaraStrefa['font'] = tkFont.Font(family="Arial", size=11)
+    textSzaraStrefa.place(x=10, y=10)
+    welcome_message = f'Klucz publiczny: {short_key(committee.public_key)}\n' + \
+                    f'Klucz prywatny: {short_key(committee.private_key)}\n' + \
+                    f'Saldo: {len(committee.fetch_balance(committee.public_key))}\n' + \
+                    'Publiczne węzły: ' + ('\n'+' '*28).join(committee.peers) + '\n' + \
+                    '-'*54
+    print_info(welcome_message)
+
 
 
 # Return byte-like objects from hex values
@@ -150,29 +390,6 @@ def short_key(key):
 
 
 ##########################################
-#   Serialization and writing to disk    #
-##########################################
-def serialize(data):
-    return pickle.dumps(data, protocol=0)
-
-
-def deserialize(serialized):
-    return pickle.loads(serialized)
-
-
-def to_disk(data, filename):
-    serialized = serialize(data)
-    with open(filename, "wb") as f:
-        f.write(serialized)
-
-
-def from_disk(filename):
-    with open(filename, "rb") as f:
-        serialized = f.read()
-        return deserialize(serialized)
-
-
-##########################################
 #   Vote class                           #
 ##########################################
 class Vote:
@@ -255,6 +472,7 @@ class Committee:
         self.genesis_block()    # On node start-up, get the contests of the genesis block
         self.peers = []  
         self.address = address
+        #self.init_from_folder()
 
     def new_peers(data):
         for peer in data:
@@ -627,8 +845,9 @@ class Committee:
                     prev_sig = None,
                 )
         block.parties = {
-                "X": "50536b106fb153aaefeb7e87c932ed809c6e991dcda08c6cd149bc8379496c5fac82038ee9c3af49a0350e2e1fe0e1dc437a432d1dbd0f5b5cd52f877e7483e7",
-                "Y": "5a8a5652ac4e2d48f464dcc0b32b7daa27c5a4e843cea80db282e5d0a2d882bd2c8e0c62ea7e4aed7db7621ee90ce5be9ce57342f4cfd9fabdcb7f72f1108eb8",
+                "Pieczywo i Ser": "50536b106fb153aaefeb7e87c932ed809c6e991dcda08c6cd149bc8379496c5fac82038ee9c3af49a0350e2e1fe0e1dc437a432d1dbd0f5b5cd52f877e7483e7",
+                "Ala ma kota": "5a8a5652ac4e2d48f464dcc0b32b7daa27c5a4e843cea80db282e5d0a2d882bd2c8e0c62ea7e4aed7db7621ee90ce5be9ce57342f4cfd9fabdcb7f72f1108eb8",
+                "Podlasie XXI Wieku": "11111652ac4e2d48f464dcc0b32b7daa27c5a4e843cea80db282e5d0a2d882bd2c8e0c62ea7e4aed7db7621ee90ce5be9ce57342f4cfd9fabdcb7f72f1108eb8",
                 }
         block.committees = {
                 "Krakow": "49e642a989a2c7352373e23d624ca1a1794f865c0a331790e67261427f0f226ab9495c09d76d3c7cb6486c291ceef0109b0eeea89ecdaf14f10dba1098a587d9",
@@ -660,6 +879,15 @@ class Committee:
         for block in blocks:
             self.handle_block(block)
     
+    # Read the blocks from your local folder
+    def init_from_folder(self):
+        counter = 1
+        while os.path.isfile(f"data/{counter}.votechain"):
+            #Filename exists
+            logger.info(f"File data/{counter}.votechain exists")
+            data = from_disk(f"data/{counter}.votechain") 
+            self.handle_block(data)
+            counter+=1
 
 ##########################################
 #   Block class                          #
@@ -707,6 +935,7 @@ def send_sync():
     global committee
     while True:
         random_node = random.choice(committee.peers)
+        print("Sending sync to: ",random_node)
         blocks_sync = send_message((random_node, PORT), "sync", committee.blocks[-1].signature, True)
         for missing_block in blocks_sync["data"]:
             signature = missing_block.signature[:4] + "..." + missing_block.signature[-5:]
@@ -714,99 +943,64 @@ def send_sync():
         time.sleep(10)
 
 
-def get_my_ip():
-    my_ip = requests.get(MY_IP_LINK).text
-    logger.info(f"My IP is {my_ip}")
-    return my_ip
-
-# Get the public peers list and filter it
-def get_public_peers():
-    my_ip = get_my_ip() 
-    peers_request = requests.get(PEERS_LIST).text
-    peers = []
-    for ip in peers_request.split(";"):
-        if ip != "" and ip != my_ip:
-            peers.append(ip)
-    return peers
-
 # Run the software with GUI as a private node
 def case_voter():
-    print("=" * 20)
-    # Generate my private key
-    keypair = create_keypair(input("Input your email address: "))
-    print("Your private key:\t {}".format(short_key(keypair[0])))
-    print("Your public key:\t {}".format(short_key(keypair[1])))
-
-    address = (get_my_ip(), PORT)
-
-    peers = get_public_peers()
-    logger.info(f"Found {len(peers)} peers: {peers}")
-
+    global SecondPage
+    global EntryTextStartingPage
+    global PoleAdresNapis
+    global option
+    global PoleNarzedzia
     global committee
 
-    committee = Committee(keypair[0], keypair[1], address)
-    committee.peers = peers
-    
-    syncing_thread = threading.Thread(target=send_sync)
-    syncing_thread.daemon = True
-    syncing_thread.start()
+    # maly config okna
+    root = tk.Tk()
+    root.title("Votechain")
+    root.geometry("1024x720")
+    root.configure(background="white")
 
-    while True:
-        print("=" * 20)
-        print("Menu:")
-        print("1) Check your balance")
-        print("2) Check balance of someone else")
-        print("3) Send to")
-        print("4) Fetch block")
-        print("5) Fetch vote")
-        print("=" * 20)
+    # robimy sobie dwa frame'y
+    StartingPage = tk.Frame(root, bg="white")
+    SecondPage = tk.Frame(root, bg="white")
 
-        option = input("What's your choice: ")
-        try:
-            option = int(option)
-        except:
-            print("Invalid option!")
-            continue
-        #Check your balance
-        if option == 1:
-            balance = committee.fetch_balance( keypair[1]  )
-            print("Your balance is: {}".format(len(balance)))
-            for vote in balance:
-                print(vote)
-        #Check the balance of someone else
-        elif option == 2:
-            pubkey = input("Input the public key: ")
-            balance = committee.fetch_balance(pubkey)
-            print("His balance is: {}".format(len(balance)))
-            for vote in balance:
-                print(vote)
-        #Send to
-        elif option == 3:
-            pubkey = create_keypair(input("Input the public key: "))[1]
-            my_balance = committee.fetch_balance( keypair[1]  )
-            if len(my_balance) == 0:
-                print("You do not have enough votes!")
-                continue
-            my_vote = my_balance[0]
-            my_vote.sign_transfer(keypair[0], pubkey)
-            print(my_vote)
-            committee.validate_vote(my_vote)
-            random_node = random.choice(committee.peers)
-            send_message((random_node, PORT), "send-vote", my_vote)
-        #Fetch block
-        elif option == 4:
-            print("Current height: {}".format( len(committee.blocks) ))
-            blockNR = int(input("What's the block nr: "))
-            block = committee.fetch_block(blockNR)
-            print(block)
-        #Fetch vote
-        elif option == 5:
-            voteID = input("What's the vote id: ")
-            vote = committee.fetch_vote(voteID)
-            print(vote)
-        else:
-            print("Invalid option")
-            continue
+
+    # to musi byc bo inaczej nie dziala
+    for frame in (SecondPage, StartingPage):
+            frame.grid(row = 10, column = 10, sticky='nesw')
+
+
+    # content pierwszej strony
+    ############################################################################################
+
+    # dodamy sobie biale pole w grid, zeby fajnie i latwo przesunanc na srodek nasz content
+    WhiteBack = tk.Label(StartingPage, bg="white", height=11)
+    WhiteBack.grid(row=0, column=0)
+
+    # Starting Page 
+    labelStartingPage = tk.Label(StartingPage, text="Adres e-mail" ,bg="white", \
+                                width=30, height=2, anchor="w", pady=0)
+    labelStartingPage['font'] = tkFont.Font(family = "Arial Narrow", size=45)
+    labelStartingPage.grid(row=1, column=0, padx=70, pady=0)
+
+
+    # e-mail Entry
+    EntryTextStartingPage = tk.Entry(StartingPage,width=30, bd=2, \
+                                                                                                    relief="flat", highlightbackground="#b9c4f1")
+    EntryTextStartingPage.config(highlightbackground="black", border=4)
+    EntryTextStartingPage['font'] = tkFont.Font(family="Arial", size=35)
+    EntryTextStartingPage.grid(row=2, column=0, sticky="w", padx=70, pady=0)
+
+    # Button "Dalej"
+    buttonStartingPage = tk.Button(StartingPage, bg="black",anchor="center", \
+                                fg="white", bd=0, height=2, activebackground="white", \
+                                text="Dalej", width=10, command=generate_committee)
+
+    buttonStartingPage['font'] = tkFont.Font(family="Arial", size=12, weight="bold")
+    buttonStartingPage.grid(row=3, column=0, pady=50, padx=70, sticky = "w")
+
+    ############################################################################################
+    # zaczynamy
+    raise_frame(StartingPage)
+    root.mainloop()
 
 
 def serve():
