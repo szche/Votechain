@@ -141,10 +141,9 @@ def send_to():
     my_vote = my_balance[0]
     my_vote.sign_transfer(committee.private_key, sending_address)
     print_info(my_vote)
-    #TODO
-    #committee.validate_vote(my_vote)
-    #random_node = random.choice(committee.peers)
-    #send_message((random_node, PORT), "send-vote", my_vote)
+    committee.validate_vote(my_vote)
+    random_node = random.choice(committee.peers)
+    send_message((random_node, PORT), "send-vote", my_vote)
 
 
 def generate_second_page():
@@ -835,9 +834,9 @@ class Committee:
                     prev_sig = None,
                 )
         block.parties = {
-                "Pieczywo i Ser": "50536b106fb153aaefeb7e87c932ed809c6e991dcda08c6cd149bc8379496c5fac82038ee9c3af49a0350e2e1fe0e1dc437a432d1dbd0f5b5cd52f877e7483e7",
-                "Ala ma kota": "5a8a5652ac4e2d48f464dcc0b32b7daa27c5a4e843cea80db282e5d0a2d882bd2c8e0c62ea7e4aed7db7621ee90ce5be9ce57342f4cfd9fabdcb7f72f1108eb8",
-                "Podlasie XXI Wieku": "11111652ac4e2d48f464dcc0b32b7daa27c5a4e843cea80db282e5d0a2d882bd2c8e0c62ea7e4aed7db7621ee90ce5be9ce57342f4cfd9fabdcb7f72f1108eb8",
+                "A": "50536b106fb153aaefeb7e87c932ed809c6e991dcda08c6cd149bc8379496c5fac82038ee9c3af49a0350e2e1fe0e1dc437a432d1dbd0f5b5cd52f877e7483e7",
+                "B": "5a8a5652ac4e2d48f464dcc0b32b7daa27c5a4e843cea80db282e5d0a2d882bd2c8e0c62ea7e4aed7db7621ee90ce5be9ce57342f4cfd9fabdcb7f72f1108eb8",
+                "C": "49e642a989a2c7352373e23d624ca1a1794f865c0a331790e67261427f0f226ab9495c09d76d3c7cb6486c291ceef0109b0eeea89ecdaf14f10dba1098a587d9",
                 }
         block.committees = {
                 "Krakow": "49e642a989a2c7352373e23d624ca1a1794f865c0a331790e67261427f0f226ab9495c09d76d3c7cb6486c291ceef0109b0eeea89ecdaf14f10dba1098a587d9",
@@ -974,7 +973,7 @@ def case_voter():
 
     # e-mail Entry
     EntryTextStartingPage = tk.Entry(StartingPage,width=30, bd=2, \
-                                                                                                    relief="flat", highlightbackground="#b9c4f1")
+                                    relief="flat", highlightbackground="#b9c4f1")
     EntryTextStartingPage.config(highlightbackground="black", border=4)
     EntryTextStartingPage['font'] = tkFont.Font(family="Arial", size=35)
     EntryTextStartingPage.grid(row=2, column=0, sticky="w", padx=70, pady=0)
