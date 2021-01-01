@@ -37,6 +37,9 @@ def get_public_peers():
             peers.append(ip)
     return peers
 
+def add_as_public():
+    requests.get(ADD_YOUR_PEER)
+
 
 ##########################################
 #   Serialization and writing to disk    #

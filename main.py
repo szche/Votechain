@@ -10,7 +10,7 @@ import tkinter.font as tkFont
 import tkinter.ttk as ttk
 from functools import partial
 from utils import logger, serialize, deserialize, to_disk, from_disk, \
-                get_my_ip, get_public_peers
+                get_my_ip, get_public_peers, add_as_public
 
 
 #TODO read previous blocks from data/ folder upon start-up
@@ -1010,7 +1010,7 @@ def case_committee():
     logger.info(f"Started as -> {short_key(keypair[1])}")
 
     # Add your ip to the peers-list
-    requests.get(ADD_YOUR_PEER)
+    add_as_public()
 
     peers = get_public_peers()
     logger.info(f"Found {len(peers)} peers: {peers}")
