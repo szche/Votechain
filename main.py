@@ -558,6 +558,8 @@ class Committee:
         #Save the accepted block
         self.save_block()
         logger.info(f"Block accepted, height: {len(self.blocks)}")
+        if len(sys.argv) == 1:
+            print_info("Znaleziono nowy blok: {}".format(short_key(block.signature)))
 
     def create_block(self):
         votes = deepcopy(self.mempool)
